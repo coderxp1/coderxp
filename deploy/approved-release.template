@@ -1,0 +1,17 @@
+# ==============================================================================
+# CoderXP Root-Owned Approved Release Manifest
+# Target Path: /etc/coderxp/approved-release
+# Ownership: root:root (UID 0, GID 0)
+# Permissions: 0644 (Read-only for unprivileged users; unprivileged users cannot edit)
+# Parsing: Strict allowlisted key-value parser (NO shell evaluation / NO source)
+#
+# Pinned Canonical Production Lockfile Checksum (LF):
+# 81d1ba80e090f1ba3bb8260e4f24a7ff97c01aee0c57927f9993579601a56351
+# ==============================================================================
+
+APPROVED_COMMIT="REPLACE_WITH_AUDITED_40_CHAR_COMMIT_SHA"
+APPROVED_TREE="REPLACE_WITH_AUDITED_40_CHAR_TREE_SHA"
+APPROVED_LOCKFILE_SHA256="81d1ba80e090f1ba3bb8260e4f24a7ff97c01aee0c57927f9993579601a56351"
+APPROVED_RELEASE_BY="Paul"
+APPROVED_RELEASE_AT="2026-09-06T19:00:00Z"
+

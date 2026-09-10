@@ -1,0 +1,36 @@
+[Unit]
+Description=CoderXP Devbox PTY Broker Daemon
+After=network.target coderxp-docker-control.service
+Requires=coderxp-docker-control.service
+
+[Service]
+Type=simple
+User=coderxp-broker
+Group=coderxp-broker
+SupplementaryGroups=coderxp-ipc
+WorkingDirectory=/opt/coderxp/current
+EnvironmentFile=-/opt/coderxp/config/coderxp.env
+Environment=NODE_ENV=production
+Environment=BROKER_PORT=3200
+Environment=CODERXP_DOCKER_NETWORK=coderxp-net
+ExecStart=/usr/bin/npx --no-install tsx /opt/coderxp/current/server/devbox-broker-server.ts
+Restart=always
+RestartSec=5
+KillMode=control-group
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=coderxp-broker
+LimitNOFILE=65536
+
+# Systemd Hardening & Sandbox
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+ReadOnlyPaths=/opt/coderxp/current /opt/coderxp/config
+ReadWritePaths=/opt/coderxp/data
+
+[Install]
+WantedBy=multi-user.target

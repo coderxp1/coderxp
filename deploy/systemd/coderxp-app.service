@@ -1,0 +1,37 @@
+[Unit]
+Description=CoderXP Web Control Plane (Next.js)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=coderxp-app
+Group=coderxp-app
+WorkingDirectory=/opt/coderxp/current
+EnvironmentFile=-/opt/coderxp/config/coderxp.env
+Environment=NODE_ENV=production
+Environment=PORT=3100
+Environment=HOSTNAME=127.0.0.1
+ExecStart=/usr/bin/node /opt/coderxp/current/node_modules/next/dist/bin/next start -p 3100 -H 127.0.0.1
+Restart=always
+RestartSec=5
+KillMode=process
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=coderxp-app
+LimitNOFILE=65536
+
+# Systemd Hardening & Sandbox
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=/opt/coderxp/data
+ReadOnlyPaths=/opt/coderxp/current /opt/coderxp/config
+
+[Install]
+WantedBy=multi-user.target

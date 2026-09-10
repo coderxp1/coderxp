@@ -1,0 +1,27 @@
+[Unit]
+Description=CoderXP Restricted Docker Control Service
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/opt/coderxp/current
+EnvironmentFile=-/opt/coderxp/config/coderxp.env
+Environment=NODE_ENV=production
+Environment=CODERXP_DOCKER_CONTROL_SOCKET=/run/coderxp/docker-control.sock
+Environment=CODERXP_DOCKER_NETWORK=coderxp-net
+ExecStart=/usr/bin/npx --no-install tsx /opt/coderxp/current/server/docker-control-server.ts
+Restart=always
+RestartSec=5
+KillMode=control-group
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=coderxp-docker-control
+LimitNOFILE=65536
+RuntimeDirectory=coderxp
+RuntimeDirectoryMode=0755
+
+[Install]
+WantedBy=multi-user.target

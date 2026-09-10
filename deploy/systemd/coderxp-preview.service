@@ -1,0 +1,37 @@
+[Unit]
+Description=CoderXP Live Preview Router Daemon (Fail-Closed)
+After=network.target coderxp-docker-control.service
+Requires=coderxp-docker-control.service
+
+[Service]
+Type=simple
+User=coderxp-preview
+Group=coderxp-preview
+SupplementaryGroups=coderxp-ipc
+WorkingDirectory=/opt/coderxp/current
+EnvironmentFile=-/opt/coderxp/config/coderxp.env
+Environment=NODE_ENV=production
+Environment=PREVIEW_ROUTER_PORT=3400
+Environment=PREVIEW_API_BASE=http://127.0.0.1:3100
+ExecStart=/usr/bin/npx --no-install tsx /opt/coderxp/current/server/preview-router-server.ts
+Restart=always
+RestartSec=5
+KillMode=control-group
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=coderxp-preview
+LimitNOFILE=65536
+
+# Systemd Hardening & Sandbox
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadOnlyPaths=/opt/coderxp/current /opt/coderxp/config
+
+[Install]
+WantedBy=multi-user.target

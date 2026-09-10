@@ -1,0 +1,55 @@
+{
+  "name": "coderxp",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": "24.x"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "test": "npx --no-install tsx scripts/test-orchestrator-stable-identity.ts && npx --no-install tsx scripts/test-message-normalization.ts && npx --no-install tsx scripts/test-command-safety.ts && npx --no-install tsx scripts/test-ssrf-guard.ts && npx --no-install tsx scripts/test-secret-redaction.ts && npx --no-install tsx scripts/test-byok-optional-streaming.ts && npx --no-install tsx scripts/test-byok-providers.ts && npx --no-install tsx scripts/test-byok-server-store.ts && npx --no-install tsx scripts/test-mcp-client.ts && npx --no-install tsx scripts/test-phase-a-event-store.ts && npx --no-install tsx scripts/test-phase-a-policy-engine.ts && npx --no-install tsx scripts/test-phase-a-timeline.ts && npx --no-install tsx scripts/test-devbox-broker-auth.ts && npx --no-install tsx scripts/test-devbox-process-idle.ts && npx --no-install tsx scripts/test-devbox-two-step-deletion.ts && npx --no-install tsx scripts/test-devbox-host-capacity.ts && npx --no-install tsx scripts/test-devbox-pty-secret-redaction.ts && npx --no-install tsx scripts/test-devbox-state-machine.ts && npx --no-install tsx scripts/test-devbox-compensating-controls.ts && npx --no-install tsx scripts/test-devbox-tier-gating.ts && npx --no-install tsx scripts/test-devbox-network-isolation.ts && npx --no-install tsx scripts/test-agent-permissions.ts && npx --no-install tsx scripts/test-agent-execution-runtime.ts && npx --no-install tsx scripts/test-agent-runtime-adapter.ts && npx --no-install tsx scripts/test-agent-orchestrator.ts && npx --no-install tsx scripts/test-agent-anthropic-adapter.ts && npx --no-install tsx scripts/test-agent-stream-route.ts && npx --no-install tsx scripts/test-agent-production-e2e.ts && npx --no-install tsx scripts/test-agent-logicc-provider.ts && npx --no-install tsx scripts/test-agent-logicc-adapter.ts && npx --no-install tsx scripts/test-agent-logicc-e2e.ts && npx --no-install tsx scripts/test-auth-password.ts && npx --no-install tsx scripts/test-live-preview.ts && npx --no-install tsx scripts/test-preview-router-isolation.ts",
+    "predeploy": "npm run test && npm run build"
+  },
+  "dependencies": {
+    "@codemirror/lang-css": "6.3.1",
+    "@codemirror/lang-html": "6.4.11",
+    "@codemirror/lang-javascript": "6.2.5",
+    "@codemirror/lang-json": "6.0.2",
+    "@fontsource/cascadia-mono": "^5.3.0",
+    "@uiw/react-codemirror": "4.25.11",
+    "@webcontainer/api": "1.6.4",
+    "@xterm/addon-fit": "0.10.0",
+    "@xterm/addon-web-links": "0.11.0",
+    "@xterm/xterm": "5.5.0",
+    "clsx": "^2.1.1",
+    "framer-motion": "^11.18.2",
+    "lucide-react": "^0.474.0",
+    "next": "16.3.0",
+    "node-pty": "^1.1.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "tailwind-merge": "^2.6.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.4",
+    "@types/ws": "^8.5.14",
+    "autoprefixer": "^10.4.20",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "16.3.0",
+    "playwright": "^1.62.1",
+    "postcss": "^8.5.1",
+    "tailwindcss": "^3.4.17",
+    "tsx": "4.19.3",
+    "typescript": "^5.7.3"
+  },
+  "overrides": {
+    "glob": "^10.4.0",
+    "brace-expansion": "^1.1.12"
+  }
+}
