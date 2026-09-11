@@ -1,0 +1,1459 @@
+diff --git a/app/api/auth/change-password/route.ts b/app/api/auth/change-password/route.ts
+index 5f15fcd..4dcfa17 100644
+--- a/app/api/auth/change-password/route.ts
++++ b/app/api/auth/change-password/route.ts
+@@ -4,6 +4,7 @@ import {
+   verifyPassword,
+   updateAdminPassword,
+   ADMIN_CONFIG,
++  SESSION_COOKIE_NAME,
+ } from "@/lib/server/auth";
+ 
+ export const runtime = "nodejs";
+@@ -11,10 +12,9 @@ export const dynamic = "force-dynamic";
+ 
+ /**
+  * Authenticated password update endpoint.
+- * Requires:
+- * 1. Valid session cookie or Authorization header.
+- * 2. Current password verification.
+- * 3. New password of at least 8 characters.
++ * Requires valid session, current password, and new password >= 8 chars.
++ * Persists first, bumps credential generation (invalidates sessions),
++ * and clears the session cookie so the client must re-authenticate.
+  */
+ export async function POST(req: NextRequest): Promise<Response> {
+   try {
+@@ -44,7 +44,6 @@ export async function POST(req: NextRequest): Promise<Response> {
+       );
+     }
+ 
+-    // Verify current password against stored password or hash
+     const isValidCurrent = verifyPassword(currentPassword, ADMIN_CONFIG.password);
+     if (!isValidCurrent) {
+       return NextResponse.json(
+@@ -53,19 +52,34 @@ export async function POST(req: NextRequest): Promise<Response> {
+       );
+     }
+ 
+-    // Update in-memory password with PBKDF2 hash
+-    const newHash = updateAdminPassword(newPassword);
++    updateAdminPassword(newPassword);
+ 
+-    return NextResponse.json({
++    const response = NextResponse.json({
+       ok: true,
+-      message: "Password updated successfully with PBKDF2 hashing.",
++      message: "Password updated successfully. Please sign in again.",
+       algorithm: "pbkdf2-sha512",
+       iterations: 100000,
++      sessionsInvalidated: true,
+     });
+-  } catch (err: any) {
+-    return NextResponse.json(
+-      { ok: false, error: err.message || "Failed to change password." },
+-      { status: 500 },
+-    );
++
++    response.cookies.set({
++      name: SESSION_COOKIE_NAME,
++      value: "",
++      httpOnly: true,
++      secure: process.env.NODE_ENV === "production",
++      sameSite: "lax",
++      path: "/",
++      maxAge: 0,
++    });
++
++    return response;
++  } catch (err: unknown) {
++    const message =
++      err instanceof Error ? err.message : "Failed to change password.";
++    const safe =
++      message.includes("persist") || message.includes("verify persisted")
++        ? message
++        : "Failed to change password.";
++    return NextResponse.json({ ok: false, error: safe }, { status: 500 });
+   }
+ }
+diff --git a/docs/auth-local-setup.md b/docs/auth-local-setup.md
+new file mode 100644
+index 0000000..b8805a7
+--- /dev/null
++++ b/docs/auth-local-setup.md
+@@ -0,0 +1,102 @@
++# Local authentication setup (no production secrets)
++
++Authentication and Devbox token signing **require explicit configuration**.
++There are no built-in signing secrets and no bootstrap password fallback.
++
++## Required environment variables
++
++| Variable | Purpose | Rules |
++|----------|---------|-------|
++| `AUTH_SESSION_SECRET` | HMAC key for app session cookies/tokens | Required, ≥ 32 characters. **Do not** reuse `DEVBOX_TOKEN_SECRET`. |
++| `DEVBOX_TOKEN_SECRET` | HMAC key for short-lived Devbox WSS tokens | Required, ≥ 32 characters. Separate from session secret. |
++| `AUTH_ADMIN_PASSWORD` **or** `AUTH_PASSWORD_FILE` | Admin credential | At least one required. See precedence below. |
++
++Optional:
++
++| Variable | Purpose |
++|----------|---------|
++| `AUTH_ADMIN_EMAIL` | Admin email claim (default: `paul@coderxp.pro`) |
++| `AUTH_PASSWORD_FILE` | Path to password hash file (default: `/opt/coderxp/data/auth-admin-hash.txt` on non-Windows) |
++
++## Credential source precedence (fail closed)
++
++1. If `AUTH_PASSWORD_FILE` **exists** on disk:
++   - Valid `pbkdf2$100000$...` hash (optional second line = generation) → use it.
++   - Exists but unreadable or malformed → **configuration failure**. Do **not** fall back to `AUTH_ADMIN_PASSWORD`.
++2. Else if `AUTH_ADMIN_PASSWORD` is set:
++   - If it already starts with `pbkdf2$100000$`, use as hash.
++   - Otherwise treat as plaintext, hash with PBKDF2, and attempt to persist to `AUTH_PASSWORD_FILE`.
++3. Else: **configuration error** — login and session minting fail closed. No default password.
++
++## Disposable local example
++
++```bash
++export AUTH_SESSION_SECRET="$(openssl rand -hex 32)"
++export DEVBOX_TOKEN_SECRET="$(openssl rand -hex 32)"
++export AUTH_ADMIN_PASSWORD="local-only-change-me"
++export AUTH_PASSWORD_FILE="$PWD/.data/auth-admin-hash.txt"
++mkdir -p .data
++
++npx tsx scripts/test-auth-config-fail-closed.ts
++npx tsx scripts/test-auth-password.ts
++npx tsx scripts/test-app-auth-session.ts
++npx tsx scripts/test-devbox-broker-auth.ts
++```
++
++## Password change behavior
++
++- New password is written to `AUTH_PASSWORD_FILE` **before** it is activated in memory.
++- Credential generation is incremented; existing sessions are rejected.
++- The change-password API clears the session cookie; the client must sign in again.
++
++## Environment-only provisioning and password changes
++
++When credentials are first loaded from `AUTH_ADMIN_PASSWORD` (no password file yet),
++`updateAdminPassword` still **requires a successful write** to `AUTH_PASSWORD_FILE`
++before activating the new hash. If the file cannot be written, the change fails and
++the previous in-memory credential remains active.
++
++After a successful change, the hash and credential generation are stored in
++`AUTH_PASSWORD_FILE`. On process restart:
++
++- If the file exists and is valid, it is authoritative (generation is preserved;
++  prior sessions with a lower generation stay invalid).
++- If the file is missing but `AUTH_ADMIN_PASSWORD` is still set, the env value is
++  used again at generation 1 — sessions from a previous process that had bumped
++  generation would not match unless the file is retained. **Keep the password file
++  durable across restarts** in any multi-instance or restart-heavy deployment.
++
++## Supported process model (credential generation)
++
++**Supported:** a single Node process (or a single writer of `AUTH_PASSWORD_FILE`)
++owns password changes. Session verification in that process always loads the
++current generation from the password file (or in-memory state after a successful
++change in the same process).
++
++**Not supported without additional work:** multiple concurrent authentication
++processes that each keep an in-memory credential-generation cache. A password
++change in process A updates the file and invalidates sessions for subsequent
++verifications in A; process B may continue accepting sessions minted under the
++old generation until B restarts or clears its credential cache. There is no
++cross-process cache invalidation signal.
++
++Overlapping `updateAdminPassword` calls: only one writer should run. Concurrent
++writers rely on temp-file + rename for a single file write, but two writers can
++still race on generation numbers. Treat concurrent password-change requests as
++unsupported; serialize them at the application boundary (single admin operator
++or a single API instance handling change-password).
++
++Committed coverage:
++- Persistence failure leaves prior credential active (`test-auth-password`)
++- Generation reload after simulated restart (`test-auth-password`)
++- Env-only provisioning requires a successful file write before activation
++  (`updateAdminPassword` throws otherwise; documented above)
++
++## Migration from the previous baseline
++
++The initial import allowed a hardcoded session secret and a known bootstrap password hash.
++Those fallbacks are removed. Before starting the app or any auth-dependent service:
++
++1. Set `AUTH_SESSION_SECRET` and `DEVBOX_TOKEN_SECRET` to independent strong values.
++2. Provision `AUTH_ADMIN_PASSWORD` or an existing hash file.
++3. Do not rely on any previous default password string.
+diff --git a/lib/server/auth.ts b/lib/server/auth.ts
+index 33c4ff4..d3e0e93 100644
+--- a/lib/server/auth.ts
++++ b/lib/server/auth.ts
+@@ -1,12 +1,14 @@
+ /**
+  * Application-Level Authentication & Session Management for CoderXP.
+  *
+- * Implements:
+- * - Single-user pilot account authentication (Paul / Admin).
+- * - Cryptographically signed HTTP-only session cookies (HMAC-SHA256).
+- * - Constant-time password verification using PBKDF2.
+- * - Multi-transport session verification (Cookies, Authorization Bearer, x-coderxp-session).
+- * - Automatic session expiry and tamper protection.
++ * Hardened:
++ * - No hardcoded signing secrets or bootstrap password fallbacks.
++ * - Explicit configuration required; missing/invalid credentials fail closed.
++ * - Separately configured session signing secret (AUTH_SESSION_SECRET only).
++ * - Admin credential source precedence is defined and fails closed.
++ * - Sessions carry a credential generation; password change invalidates prior sessions.
++ * - Constant-time password verification (PBKDF2-SHA512).
++ * - Multi-transport session verification (cookie, Bearer, x-coderxp-session).
+  */
+ 
+ import crypto from "node:crypto";
+@@ -16,17 +18,36 @@ import { NextRequest } from "next/server";
+ 
+ const SESSION_COOKIE_NAME = "__Host-coderxp_session";
+ const LEGACY_SESSION_COOKIE_NAME = "coderxp_session";
+-const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
++const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
++const MIN_SECRET_LENGTH = 32;
++
++function resolveSessionSecret(): string {
++  const secret = (process.env.AUTH_SESSION_SECRET || "").trim();
++  if (!secret) {
++    throw new Error(
++      "AUTH_SESSION_SECRET is required and must be set to a strong random value (min 32 characters). No default secret is allowed.",
++    );
++  }
++  if (secret.length < MIN_SECRET_LENGTH) {
++    throw new Error(
++      `AUTH_SESSION_SECRET must be at least ${MIN_SECRET_LENGTH} characters. No default secret is allowed.`,
++    );
++  }
++  return secret;
++}
+ 
+-// Secret key for signing session cookies
+-const AUTH_SESSION_SECRET =
+-  process.env.AUTH_SESSION_SECRET ||
+-  process.env.DEVBOX_TOKEN_SECRET ||
+-  "coderxp-session-hmac-secret-v2-production-2026";
++let _sessionSecret: string | null = null;
++function getSessionSecret(): string {
++  if (_sessionSecret === null) {
++    _sessionSecret = resolveSessionSecret();
++  }
++  return _sessionSecret;
++}
+ 
+-// Default pre-computed PBKDF2 hash for initial bootstrap: 'coderxp-pilot-2026'
+-const DEFAULT_AUTH_PASSWORD_HASH =
+-  "pbkdf2$100000$daed662e0ffc99ea2440d8697c12de6c$b689f32dd401165f9bc7a8d17b5157ff2b8b95021db99141f25989f9683d74c2622f7aab9f38f275d2094c7874a1cbed38bfb334f4a218c555d88bb257282439";
++export function __resetAuthSecretCacheForTests(): void {
++  _sessionSecret = null;
++  _credentialState = null;
++}
+ 
+ export const AUTH_PASSWORD_FILE =
+   process.env.AUTH_PASSWORD_FILE ||
+@@ -34,54 +55,115 @@ export const AUTH_PASSWORD_FILE =
+     ? path.join(process.cwd(), ".data", "auth-admin-hash.txt")
+     : "/opt/coderxp/data/auth-admin-hash.txt");
+ 
++interface CredentialState {
++  passwordHash: string;
++  generation: number;
++}
++
++let _credentialState: CredentialState | null = null;
++
++function parsePasswordFileContent(content: string): CredentialState | null {
++  const lines = content
++    .split(/\r?\n/)
++    .map((l) => l.trim())
++    .filter(Boolean);
++  if (lines.length === 0) return null;
++  const hash = lines[0];
++  if (!hash.startsWith("pbkdf2$100000$")) return null;
++  let generation = 1;
++  if (lines[1] && /^\d+$/.test(lines[1])) {
++    generation = parseInt(lines[1], 10);
++  }
++  return { passwordHash: hash, generation };
++}
++
+ /**
+- * Loads the persisted admin PBKDF2 password hash from disk or environment.
++ * Credential source precedence (fail closed):
++ * 1. If AUTH_PASSWORD_FILE exists on disk:
++ *    - Valid pbkdf2 hash (+ optional generation) -> use it.
++ *    - Exists but unreadable or malformed -> configuration failure.
++ *      Do NOT fall through to AUTH_ADMIN_PASSWORD (avoids silent downgrade).
++ * 2. Else if AUTH_ADMIN_PASSWORD is set (plaintext or pbkdf2 hash) -> use it
++ *    (and attempt to persist a hash file for durable generation tracking).
++ * 3. Else -> configuration failure. No built-in defaults.
+  */
+-export function loadPersistedAdminPassword(): string {
+-  try {
+-    if (fs.existsSync(AUTH_PASSWORD_FILE)) {
+-      const content = fs.readFileSync(AUTH_PASSWORD_FILE, "utf8").trim();
+-      if (content.startsWith("pbkdf2$100000$")) {
+-        return content;
+-      }
++function loadCredentialState(): CredentialState {
++  const fileExists = fs.existsSync(AUTH_PASSWORD_FILE);
++
++  if (fileExists) {
++    let content: string;
++    try {
++      content = fs.readFileSync(AUTH_PASSWORD_FILE, "utf8");
++    } catch {
++      throw new Error(
++        `AUTH_PASSWORD_FILE exists but is unreadable (${AUTH_PASSWORD_FILE}). Refusing to fall back to environment credentials.`,
++      );
+     }
+-  } catch {
+-    // fallback to env or default
++    const parsed = parsePasswordFileContent(content);
++    if (!parsed) {
++      throw new Error(
++        `AUTH_PASSWORD_FILE exists but does not contain a valid pbkdf2$100000$... hash (${AUTH_PASSWORD_FILE}). Refusing to fall back to environment credentials.`,
++      );
++    }
++    return parsed;
+   }
+ 
+   const envPass = (process.env.AUTH_ADMIN_PASSWORD || "").trim();
+   if (envPass.startsWith("pbkdf2$100000$")) {
+-    return envPass;
++    return { passwordHash: envPass, generation: 1 };
+   }
+   if (envPass.length > 0) {
+     const hashed = hashPassword(envPass);
+-    try {
+-      const dir = path.dirname(AUTH_PASSWORD_FILE);
+-      if (!fs.existsSync(dir)) {
+-        fs.mkdirSync(dir, { recursive: true });
+-      }
+-      fs.writeFileSync(AUTH_PASSWORD_FILE, hashed, "utf8");
+-    } catch {
+-      // ignore
++    const state: CredentialState = { passwordHash: hashed, generation: 1 };
++    tryPersistCredentials(state);
++    return state;
++  }
++
++  throw new Error(
++    "Admin credentials are not configured. Set AUTH_ADMIN_PASSWORD (plaintext or pbkdf2 hash) or provision AUTH_PASSWORD_FILE with a valid pbkdf2$100000$... hash. No default credentials are allowed.",
++  );
++}
++
++function getCredentialState(): CredentialState {
++  if (_credentialState === null) {
++    _credentialState = loadCredentialState();
++  }
++  return _credentialState;
++}
++
++function tryPersistCredentials(state: CredentialState): void {
++  try {
++    const dir = path.dirname(AUTH_PASSWORD_FILE);
++    if (!fs.existsSync(dir)) {
++      fs.mkdirSync(dir, { recursive: true });
+     }
+-    return hashed;
++    const body = `${state.passwordHash}\n${state.generation}\n`;
++    const tmp = `${AUTH_PASSWORD_FILE}.${process.pid}.${Date.now()}.tmp`;
++    fs.writeFileSync(tmp, body, { encoding: "utf8", mode: 0o600 });
++    fs.renameSync(tmp, AUTH_PASSWORD_FILE);
++  } catch {
++    // callers requiring durability handle failure
+   }
++}
+ 
+-  return DEFAULT_AUTH_PASSWORD_HASH;
++export function loadPersistedAdminPassword(): string {
++  return getCredentialState().passwordHash;
+ }
+ 
+-let _adminPasswordHash = loadPersistedAdminPassword();
++export function getCredentialGeneration(): number {
++  return getCredentialState().generation;
++}
+ 
+-// Admin user credentials configured via environment with safe fallbacks
+ export const ADMIN_CONFIG = {
+   userId: "coderxpadmin",
+   email: process.env.AUTH_ADMIN_EMAIL || "paul@coderxp.pro",
+   username: "coderxpadmin",
+   get password(): string {
+-    return _adminPasswordHash;
++    return getCredentialState().passwordHash;
+   },
+   set password(val: string) {
+-    _adminPasswordHash = val;
++    const state = getCredentialState();
++    state.passwordHash = val;
+   },
+ };
+ 
+@@ -92,13 +174,13 @@ export interface SessionPayload {
+   createdAt: number;
+   expiresAt: number;
+   nonce: string;
++  credentialGeneration: number;
+ }
+ 
+-/**
+- * Creates a signed session token.
+- */
+ export function createSessionToken(userId: string, email: string): string {
++  const secret = getSessionSecret();
+   const now = Date.now();
++  const generation = getCredentialGeneration();
+   const payload: SessionPayload = {
+     userId,
+     email,
+@@ -106,20 +188,18 @@ export function createSessionToken(userId: string, email: string): string {
+     createdAt: now,
+     expiresAt: now + SESSION_TTL_SECONDS * 1000,
+     nonce: crypto.randomBytes(16).toString("hex"),
++    credentialGeneration: generation,
+   };
+ 
+   const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
+   const signature = crypto
+-    .createHmac("sha256", AUTH_SESSION_SECRET)
++    .createHmac("sha256", secret)
+     .update(payloadB64)
+     .digest("base64url");
+ 
+   return `${payloadB64}.${signature}`;
+ }
+ 
+-/**
+- * Verifies a signed session token.
+- */
+ export function verifySessionToken(token: string): {
+   valid: boolean;
+   payload?: SessionPayload;
+@@ -129,6 +209,16 @@ export function verifySessionToken(token: string): {
+     return { valid: false, error: "Missing session token." };
+   }
+ 
++  let secret: string;
++  try {
++    secret = getSessionSecret();
++  } catch (err: unknown) {
++    return {
++      valid: false,
++      error: err instanceof Error ? err.message : "Session secret not configured.",
++    };
++  }
++
+   const parts = token.split(".");
+   if (parts.length !== 2) {
+     return { valid: false, error: "Malformed session token." };
+@@ -136,7 +226,7 @@ export function verifySessionToken(token: string): {
+ 
+   const [payloadB64, signature] = parts;
+   const expectedSig = crypto
+-    .createHmac("sha256", AUTH_SESSION_SECRET)
++    .createHmac("sha256", secret)
+     .update(payloadB64)
+     .digest("base64url");
+ 
+@@ -154,19 +244,27 @@ export function verifySessionToken(token: string): {
+     const payloadJson = Buffer.from(payloadB64, "base64url").toString("utf8");
+     const payload: SessionPayload = JSON.parse(payloadJson);
+ 
+-    if (Date.now() > payload.expiresAt) {
++    if (typeof payload.expiresAt !== "number" || Date.now() > payload.expiresAt) {
+       return { valid: false, error: "Session token expired." };
+     }
+ 
++    if (
++      typeof payload.credentialGeneration !== "number" ||
++      payload.credentialGeneration !== getCredentialGeneration()
++    ) {
++      return { valid: false, error: "Session invalidated by credential change." };
++    }
++
++    if (!payload.userId || !payload.email) {
++      return { valid: false, error: "Invalid session claims." };
++    }
++
+     return { valid: true, payload };
+   } catch {
+     return { valid: false, error: "Invalid session payload JSON." };
+   }
+ }
+ 
+-/**
+- * Hashes a plaintext password using PBKDF2 with SHA-512 and 100,000 iterations.
+- */
+ export function hashPassword(password: string): string {
+   const salt = crypto.randomBytes(16).toString("hex");
+   const iterations = 100000;
+@@ -174,17 +272,9 @@ export function hashPassword(password: string): string {
+   return `pbkdf2$${iterations}$${salt}$${hash}`;
+ }
+ 
+-/**
+- * Verifies a password against a stored PBKDF2 hash. Plaintext fallbacks are strictly rejected.
+- */
+ export function verifyPassword(passwordAttempt: string, storedHash: string): boolean {
+   if (!passwordAttempt || !storedHash) return false;
+-
+-  // Strict enforcement: MUST be a valid PBKDF2 hash
+-  if (!storedHash.startsWith("pbkdf2$100000$")) {
+-    return false;
+-  }
+-
++  if (!storedHash.startsWith("pbkdf2$100000$")) return false;
+   const parts = storedHash.split("$");
+   if (parts.length !== 4) return false;
+   const iterations = parseInt(parts[1], 10);
+@@ -197,35 +287,65 @@ export function verifyPassword(passwordAttempt: string, storedHash: string): boo
+   return crypto.timingSafeEqual(derivedBuf, expectedBuf);
+ }
+ 
+-/**
+- * Updates the admin password hash in memory and writes it to persistent storage.
+- */
+ export function updateAdminPassword(newPasswordPlaintext: string): string {
++  if (!newPasswordPlaintext || newPasswordPlaintext.length < 8) {
++    throw new Error("New password must be at least 8 characters.");
++  }
++
+   const newHash = hashPassword(newPasswordPlaintext);
+-  ADMIN_CONFIG.password = newHash;
++  const current = getCredentialState();
++  const next: CredentialState = {
++    passwordHash: newHash,
++    generation: current.generation + 1,
++  };
++
++  const dir = path.dirname(AUTH_PASSWORD_FILE);
++  if (!fs.existsSync(dir)) {
++    fs.mkdirSync(dir, { recursive: true });
++  }
++  const body = `${next.passwordHash}\n${next.generation}\n`;
++  const tmp = `${AUTH_PASSWORD_FILE}.${process.pid}.${Date.now()}.tmp`;
++  try {
++    fs.writeFileSync(tmp, body, { encoding: "utf8", mode: 0o600 });
++    fs.renameSync(tmp, AUTH_PASSWORD_FILE);
++  } catch {
++    try {
++      if (fs.existsSync(tmp)) fs.unlinkSync(tmp);
++    } catch {
++      // ignore
++    }
++    throw new Error("Failed to persist new password hash. Password was not changed.");
++  }
+ 
+   try {
+-    const dir = path.dirname(AUTH_PASSWORD_FILE);
+-    if (!fs.existsSync(dir)) {
+-      fs.mkdirSync(dir, { recursive: true });
++    const readBack = fs.readFileSync(AUTH_PASSWORD_FILE, "utf8");
++    const parsed = parsePasswordFileContent(readBack);
++    if (!parsed || parsed.passwordHash !== next.passwordHash) {
++      throw new Error("Password file verification after write failed.");
+     }
+-    fs.writeFileSync(AUTH_PASSWORD_FILE, newHash, "utf8");
+   } catch {
+-    // ignore
++    throw new Error(
++      "Failed to verify persisted password hash. Password was not activated.",
++    );
+   }
+ 
++  _credentialState = next;
+   return newHash;
+ }
+ 
+-/**
+- * Constant-time credential verification for Paul / Admin account.
+- */
+ export function verifyAdminCredentials(
+   identifier: string,
+   passwordAttempt: string,
+ ): boolean {
+   if (!identifier || !passwordAttempt) return false;
+ 
++  let state: CredentialState;
++  try {
++    state = getCredentialState();
++  } catch {
++    return false;
++  }
++
+   const cleanId = identifier.trim().toLowerCase();
+   const validId =
+     cleanId === ADMIN_CONFIG.email.toLowerCase() ||
+@@ -234,16 +354,9 @@ export function verifyAdminCredentials(
+ 
+   if (!validId) return false;
+ 
+-  return verifyPassword(passwordAttempt, ADMIN_CONFIG.password);
++  return verifyPassword(passwordAttempt, state.passwordHash);
+ }
+ 
+-/**
+- * Universal request authenticator for API routes.
+- * Checks:
+- * 1. HTTP-only cookie `coderxp_session`
+- * 2. Authorization header: `Bearer <session_token>`
+- * 3. Custom header `x-coderxp-session`
+- */
+ export function validateRequestAuth(req: Request | NextRequest): {
+   authenticated: boolean;
+   userId?: string;
+@@ -252,7 +365,6 @@ export function validateRequestAuth(req: Request | NextRequest): {
+ } {
+   let token = "";
+ 
+-  // 1. Check Cookie (__Host-coderxp_session first, then legacy coderxp_session)
+   if ("cookies" in req && typeof (req as NextRequest).cookies?.get === "function") {
+     const cookie =
+       (req as NextRequest).cookies.get(SESSION_COOKIE_NAME) ||
+@@ -272,7 +384,6 @@ export function validateRequestAuth(req: Request | NextRequest): {
+     }
+   }
+ 
+-  // 2. Check Authorization Bearer header
+   if (!token) {
+     const authHeader = req.headers.get("authorization") || "";
+     if (authHeader.startsWith("Bearer ")) {
+@@ -280,7 +391,6 @@ export function validateRequestAuth(req: Request | NextRequest): {
+     }
+   }
+ 
+-  // 3. Check x-coderxp-session header
+   if (!token) {
+     token = req.headers.get("x-coderxp-session") || "";
+   }
+diff --git a/lib/server/devbox-token.ts b/lib/server/devbox-token.ts
+index 75bc2f4..7ff935f 100644
+--- a/lib/server/devbox-token.ts
++++ b/lib/server/devbox-token.ts
+@@ -1,19 +1,45 @@
+ /**
+- * Devbox WSS Single-Use Token Minter & Validator for CoderXP Revision 2.4.
++ * Devbox WSS Single-Use Token Minter & Validator for CoderXP.
+  *
+- * Implements Amendment 1:
++ * Hardened:
++ * - Requires explicit DEVBOX_TOKEN_SECRET (no hardcoded fallback).
++ * - Does not reuse AUTH_SESSION_SECRET.
+  * - Issues short-lived (60s), HMAC-SHA256 signed single-use session tokens.
+- * - Enforces user session, project ownership, and tier entitlement.
+- * - Invalidates token on first use; rejects expired, invalid, or cross-user handshakes.
++ * - Invalidates token on first use; rejects expired, invalid, or cross-project handshakes.
+  */
+ 
+ import crypto from "node:crypto";
+ 
+-const DEVBOX_TOKEN_SECRET =
+-  process.env.DEVBOX_TOKEN_SECRET || "coderxp-devbox-broker-hmac-secret-2026";
+-const TOKEN_TTL_MS = 60 * 1000; // 60 seconds
++const MIN_SECRET_LENGTH = 32;
++const TOKEN_TTL_MS = 60 * 1000;
++
++function resolveDevboxTokenSecret(): string {
++  const secret = (process.env.DEVBOX_TOKEN_SECRET || "").trim();
++  if (!secret) {
++    throw new Error(
++      "DEVBOX_TOKEN_SECRET is required and must be set to a strong random value (min 32 characters). No default secret is allowed.",
++    );
++  }
++  if (secret.length < MIN_SECRET_LENGTH) {
++    throw new Error(
++      `DEVBOX_TOKEN_SECRET must be at least ${MIN_SECRET_LENGTH} characters. No default secret is allowed.`,
++    );
++  }
++  return secret;
++}
++
++let _devboxSecret: string | null = null;
++function getDevboxTokenSecret(): string {
++  if (_devboxSecret === null) {
++    _devboxSecret = resolveDevboxTokenSecret();
++  }
++  return _devboxSecret;
++}
++
++export function __resetDevboxTokenSecretCacheForTests(): void {
++  _devboxSecret = null;
++}
+ 
+-// In-memory set of consumed nonces (prevents replay attacks)
+ const consumedNonces = new Set<string>();
+ 
+ export interface DevboxTokenPayload {
+@@ -24,6 +50,7 @@ export interface DevboxTokenPayload {
+ }
+ 
+ export function mintDevboxWssToken(userId: string, projectId: string): string {
++  const secret = getDevboxTokenSecret();
+   const payload: DevboxTokenPayload = {
+     userId,
+     projectId,
+@@ -33,7 +60,7 @@ export function mintDevboxWssToken(userId: string, projectId: string): string {
+ 
+   const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
+   const signature = crypto
+-    .createHmac("sha256", DEVBOX_TOKEN_SECRET)
++    .createHmac("sha256", secret)
+     .update(payloadB64)
+     .digest("base64url");
+ 
+@@ -48,6 +75,16 @@ export function verifyDevboxWssToken(
+     return { valid: false, error: "Missing token." };
+   }
+ 
++  let secret: string;
++  try {
++    secret = getDevboxTokenSecret();
++  } catch (err: unknown) {
++    return {
++      valid: false,
++      error: err instanceof Error ? err.message : "Devbox token secret not configured.",
++    };
++  }
++
+   const parts = token.split(".");
+   if (parts.length !== 2) {
+     return { valid: false, error: "Malformed token format." };
+@@ -55,11 +92,16 @@ export function verifyDevboxWssToken(
+ 
+   const [payloadB64, signature] = parts;
+   const expectedSig = crypto
+-    .createHmac("sha256", DEVBOX_TOKEN_SECRET)
++    .createHmac("sha256", secret)
+     .update(payloadB64)
+     .digest("base64url");
+ 
+-  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSig))) {
++  const sigBuf = Buffer.from(signature);
++  const expectedBuf = Buffer.from(expectedSig);
++  if (
++    sigBuf.length !== expectedBuf.length ||
++    !crypto.timingSafeEqual(sigBuf, expectedBuf)
++  ) {
+     return { valid: false, error: "Invalid token signature." };
+   }
+ 
+@@ -75,14 +117,16 @@ export function verifyDevboxWssToken(
+   }
+ 
+   if (payload.projectId !== expectedProjectId) {
+-    return { valid: false, error: "Token project mismatch (unauthorized cross-project access)." };
++    return {
++      valid: false,
++      error: "Token project mismatch (unauthorized cross-project access).",
++    };
+   }
+ 
+   if (consumedNonces.has(payload.nonce)) {
+     return { valid: false, error: "Token has already been consumed (replay prevention)." };
+   }
+ 
+-  // Mark nonce as consumed
+   consumedNonces.add(payload.nonce);
+ 
+   return { valid: true, userId: payload.userId };
+diff --git a/package.json b/package.json
+index e3712db..23eac48 100644
+--- a/package.json
++++ b/package.json
+@@ -10,7 +10,7 @@
+     "build": "next build",
+     "start": "next start",
+     "lint": "eslint .",
+-    "test": "npx --no-install tsx scripts/test-orchestrator-stable-identity.ts && npx --no-install tsx scripts/test-message-normalization.ts && npx --no-install tsx scripts/test-command-safety.ts && npx --no-install tsx scripts/test-ssrf-guard.ts && npx --no-install tsx scripts/test-secret-redaction.ts && npx --no-install tsx scripts/test-byok-optional-streaming.ts && npx --no-install tsx scripts/test-byok-providers.ts && npx --no-install tsx scripts/test-byok-server-store.ts && npx --no-install tsx scripts/test-mcp-client.ts && npx --no-install tsx scripts/test-phase-a-event-store.ts && npx --no-install tsx scripts/test-phase-a-policy-engine.ts && npx --no-install tsx scripts/test-phase-a-timeline.ts && npx --no-install tsx scripts/test-devbox-broker-auth.ts && npx --no-install tsx scripts/test-devbox-process-idle.ts && npx --no-install tsx scripts/test-devbox-two-step-deletion.ts && npx --no-install tsx scripts/test-devbox-host-capacity.ts && npx --no-install tsx scripts/test-devbox-pty-secret-redaction.ts && npx --no-install tsx scripts/test-devbox-state-machine.ts && npx --no-install tsx scripts/test-devbox-compensating-controls.ts && npx --no-install tsx scripts/test-devbox-tier-gating.ts && npx --no-install tsx scripts/test-devbox-network-isolation.ts && npx --no-install tsx scripts/test-agent-permissions.ts && npx --no-install tsx scripts/test-agent-execution-runtime.ts && npx --no-install tsx scripts/test-agent-runtime-adapter.ts && npx --no-install tsx scripts/test-agent-orchestrator.ts && npx --no-install tsx scripts/test-agent-anthropic-adapter.ts && npx --no-install tsx scripts/test-agent-stream-route.ts && npx --no-install tsx scripts/test-agent-production-e2e.ts && npx --no-install tsx scripts/test-agent-logicc-provider.ts && npx --no-install tsx scripts/test-agent-logicc-adapter.ts && npx --no-install tsx scripts/test-agent-logicc-e2e.ts && npx --no-install tsx scripts/test-auth-password.ts && npx --no-install tsx scripts/test-live-preview.ts && npx --no-install tsx scripts/test-preview-router-isolation.ts",
++    "test": "npx --no-install tsx scripts/test-orchestrator-stable-identity.ts && npx --no-install tsx scripts/test-message-normalization.ts && npx --no-install tsx scripts/test-command-safety.ts && npx --no-install tsx scripts/test-ssrf-guard.ts && npx --no-install tsx scripts/test-secret-redaction.ts && npx --no-install tsx scripts/test-byok-optional-streaming.ts && npx --no-install tsx scripts/test-byok-providers.ts && npx --no-install tsx scripts/test-byok-server-store.ts && npx --no-install tsx scripts/test-mcp-client.ts && npx --no-install tsx scripts/test-phase-a-event-store.ts && npx --no-install tsx scripts/test-phase-a-policy-engine.ts && npx --no-install tsx scripts/test-phase-a-timeline.ts && npx --no-install tsx scripts/test-devbox-broker-auth.ts && npx --no-install tsx scripts/test-devbox-process-idle.ts && npx --no-install tsx scripts/test-devbox-two-step-deletion.ts && npx --no-install tsx scripts/test-devbox-host-capacity.ts && npx --no-install tsx scripts/test-devbox-pty-secret-redaction.ts && npx --no-install tsx scripts/test-devbox-state-machine.ts && npx --no-install tsx scripts/test-devbox-compensating-controls.ts && npx --no-install tsx scripts/test-devbox-tier-gating.ts && npx --no-install tsx scripts/test-devbox-network-isolation.ts && npx --no-install tsx scripts/test-agent-permissions.ts && npx --no-install tsx scripts/test-agent-execution-runtime.ts && npx --no-install tsx scripts/test-agent-runtime-adapter.ts && npx --no-install tsx scripts/test-agent-orchestrator.ts && npx --no-install tsx scripts/test-agent-anthropic-adapter.ts && npx --no-install tsx scripts/test-agent-stream-route.ts && npx --no-install tsx scripts/test-agent-production-e2e.ts && npx --no-install tsx scripts/test-agent-logicc-provider.ts && npx --no-install tsx scripts/test-agent-logicc-adapter.ts && npx --no-install tsx scripts/test-agent-logicc-e2e.ts && npx --no-install tsx scripts/test-auth-config-fail-closed.ts && npx --no-install tsx scripts/test-auth-password.ts && npx --no-install tsx scripts/test-app-auth-session.ts && npx --no-install tsx scripts/test-live-preview.ts && npx --no-install tsx scripts/test-preview-router-isolation.ts",
+     "predeploy": "npm run test && npm run build"
+   },
+   "dependencies": {
+diff --git a/scripts/test-app-auth-session.ts b/scripts/test-app-auth-session.ts
+index 3faa787..b4a6b55 100644
+--- a/scripts/test-app-auth-session.ts
++++ b/scripts/test-app-auth-session.ts
+@@ -1,117 +1,133 @@
+ /**
+- * Application Authentication & Session Isolation Regression Suite.
+- *
+- * Verifies:
+- * 1. Unauthenticated requests to /api/agent/* and /api/devbox/* fail-closed with 401.
+- * 2. Invalid credentials fail with 401.
+- * 3. Valid credentials mint HMAC-SHA256 signed session token.
+- * 4. Tampered signatures fail verification.
+- * 5. Authenticated requests with session cookie/header succeed.
++ * Application Authentication & Session Isolation Regression Suite (hardened).
+  */
++import assert from "node:assert/strict";
++import fs from "node:fs";
++import path from "node:path";
++import os from "node:os";
++import crypto from "node:crypto";
+ 
+-import assert from "node:assert";
+-import {
+-  createSessionToken,
+-  verifySessionToken,
+-  verifyAdminCredentials,
+-  validateRequestAuth,
+-  ADMIN_CONFIG,
+-  SESSION_COOKIE_NAME,
+-} from "../lib/server/auth";
++const TEST_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "coderxp-session-test-"));
++const PASSWORD_FILE = path.join(TEST_DIR, "auth-admin-hash.txt");
++
++process.env.AUTH_SESSION_SECRET = "test-only-session-secret-min-32-chars!!";
++process.env.DEVBOX_TOKEN_SECRET = "test-only-devbox-secret-min-32-chars!!!";
++process.env.AUTH_PASSWORD_FILE = PASSWORD_FILE;
++process.env.AUTH_ADMIN_PASSWORD = "disposable-session-test-pass-2026";
+ 
+ async function main() {
+-  console.log("==========================================================================");
+-  console.log("          CODERXP APP-LEVEL AUTH & SESSION SECURITY REGRESSION SUITE      ");
+-  console.log("==========================================================================\n");
+-
+-  // --- 1. Credential Verification ---
+-  console.log("--- 1. Testing Credential Verification ---");
+-  assert.strictEqual(
+-    verifyAdminCredentials("coderxpadmin", ADMIN_CONFIG.password),
++  const auth = await import("../lib/server/auth");
++  auth.__resetAuthSecretCacheForTests();
++
++  console.log("================================================");
++  console.log("  AUTH & SESSION HARDENING REGRESSION SUITE");
++  console.log("================================================");
++
++  console.log("\n--- 1. Valid credentials mint signed session ---");
++  assert.equal(
++    auth.verifyAdminCredentials("coderxpadmin", "disposable-session-test-pass-2026"),
+     true,
+-    "Valid username + password must verify",
+   );
+-  assert.strictEqual(
+-    verifyAdminCredentials(ADMIN_CONFIG.email, ADMIN_CONFIG.password),
+-    true,
+-    "Valid email + password must verify",
++  assert.equal(auth.verifyAdminCredentials("coderxpadmin", "bad"), false);
++
++  const token = auth.createSessionToken(
++    auth.ADMIN_CONFIG.userId,
++    auth.ADMIN_CONFIG.email,
++  );
++  assert.ok(token.includes("."));
++  const verified = auth.verifySessionToken(token);
++  assert.equal(verified.valid, true);
++  assert.equal(verified.payload?.userId, "coderxpadmin");
++  assert.equal(typeof verified.payload?.credentialGeneration, "number");
++  console.log("[PASS] Session token signing verified.");
++
++  console.log("\n--- 2. Reject malformed, tampered, expired, invalid-claim sessions ---");
++  const [b64, sig] = token.split(".");
++  const tamperedSig = sig.slice(0, -4) + "XXXX";
++  assert.equal(auth.verifySessionToken(`${b64}.${tamperedSig}`).valid, false);
++  assert.equal(auth.verifySessionToken("not-a-token").valid, false);
++  assert.equal(auth.verifySessionToken("").valid, false);
++  assert.equal(auth.verifySessionToken("onlyonepart").valid, false);
++
++  const expiredPayload = {
++    userId: "coderxpadmin",
++    email: auth.ADMIN_CONFIG.email,
++    role: "admin",
++    createdAt: Date.now() - 10_000,
++    expiresAt: Date.now() - 1000,
++    nonce: crypto.randomBytes(8).toString("hex"),
++    credentialGeneration: auth.getCredentialGeneration(),
++  };
++  const expB64 = Buffer.from(JSON.stringify(expiredPayload)).toString("base64url");
++  const expSig = crypto
++    .createHmac("sha256", process.env.AUTH_SESSION_SECRET!)
++    .update(expB64)
++    .digest("base64url");
++  assert.equal(auth.verifySessionToken(`${expB64}.${expSig}`).valid, false, "expired must fail");
++
++  const badClaims = {
++    userId: "",
++    email: "",
++    role: "admin",
++    createdAt: Date.now(),
++    expiresAt: Date.now() + 999999,
++    nonce: "x",
++    credentialGeneration: auth.getCredentialGeneration(),
++  };
++  const badB64 = Buffer.from(JSON.stringify(badClaims)).toString("base64url");
++  const badSig = crypto
++    .createHmac("sha256", process.env.AUTH_SESSION_SECRET!)
++    .update(badB64)
++    .digest("base64url");
++  assert.equal(auth.verifySessionToken(`${badB64}.${badSig}`).valid, false, "empty claims must fail");
++  console.log("[PASS] Malformed, tampered, expired, and invalid-claim sessions rejected.");
++
++  console.log("\n--- 3. Multi-transport request auth ---");
++  const emptyResult = auth.validateRequestAuth(
++    new Request("https://example.test/api/agent/stream", { headers: new Headers() }),
+   );
+-  assert.strictEqual(
+-    verifyAdminCredentials("wronguser", ADMIN_CONFIG.password),
+-    false,
+-    "Wrong username must fail",
++  assert.equal(emptyResult.authenticated, false);
++
++  const cookieResult = auth.validateRequestAuth(
++    new Request("https://example.test/api/agent/stream", {
++      headers: new Headers({ cookie: `${auth.SESSION_COOKIE_NAME}=${token}` }),
++    }),
+   );
+-  assert.strictEqual(
+-    verifyAdminCredentials("coderxpadmin", "wrongpassword"),
+-    false,
+-    "Wrong password must fail",
++  assert.equal(cookieResult.authenticated, true);
++  assert.equal(cookieResult.userId, "coderxpadmin");
++
++  const bearerResult = auth.validateRequestAuth(
++    new Request("https://example.test/api/agent/stream", {
++      headers: new Headers({ authorization: `Bearer ${token}` }),
++    }),
+   );
+-  console.log("[PASS] Credential verification tests passed.");
++  assert.equal(bearerResult.authenticated, true);
+ 
+-  // --- 2. Session Token Minting & Signature Verification ---
+-  console.log("\n--- 2. Testing Session Token Minting & Cryptographic Verification ---");
+-  const token = createSessionToken("coderxpadmin", "paul@coderxp.pro");
+-  assert(token.includes("."), "Session token must contain signature separator");
++  const customResult = auth.validateRequestAuth(
++    new Request("https://example.test/api/agent/stream", {
++      headers: new Headers({ "x-coderxp-session": token }),
++    }),
++  );
++  assert.equal(customResult.authenticated, true);
++  console.log("[PASS] Multi-transport authentication verified.");
+ 
+-  const verified = verifySessionToken(token);
+-  assert.strictEqual(verified.valid, true, "Valid session token must verify cleanly");
+-  assert.strictEqual(verified.payload?.userId, "coderxpadmin");
+-  assert.strictEqual(verified.payload?.email, "paul@coderxp.pro");
++  console.log("\n--- 4. Session invalidation after password change ---");
++  const before = token;
++  auth.updateAdminPassword("post-change-password-2026xx");
++  assert.equal(auth.verifySessionToken(before).valid, false);
++  const after = auth.createSessionToken(auth.ADMIN_CONFIG.userId, auth.ADMIN_CONFIG.email);
++  assert.equal(auth.verifySessionToken(after).valid, true);
++  console.log("[PASS] Credential generation invalidates prior sessions.");
+ 
+-  // Tamper signature test
+-  const [b64, sig] = token.split(".");
+-  const tamperedSig = sig.slice(0, -4) + "XXXX";
+-  const tamperedRes = verifySessionToken(`${b64}.${tamperedSig}`);
+-  assert.strictEqual(tamperedRes.valid, false, "Tampered session signature must fail");
+-  console.log("[PASS] Session token signing and tamper protection verified.");
+-
+-  // --- 3. Multi-Transport Request Auth Resolver ---
+-  console.log("\n--- 3. Testing Multi-Transport Request Auth Resolution ---");
+-
+-  // A. Unauthenticated Request
+-  const emptyHeaders = new Headers();
+-  const unauthReq = new Request("https://coderxp.pro/api/agent/stream", {
+-    headers: emptyHeaders,
+-  });
+-  const unauthResult = validateRequestAuth(unauthReq);
+-  assert.strictEqual(unauthResult.authenticated, false, "Empty request must be unauthenticated");
+-
+-  // B. Cookie Transport
+-  const cookieHeaders = new Headers({
+-    cookie: `${SESSION_COOKIE_NAME}=${token}`,
+-  });
+-  const cookieReq = new Request("https://coderxp.pro/api/agent/stream", {
+-    headers: cookieHeaders,
+-  });
+-  const cookieResult = validateRequestAuth(cookieReq);
+-  assert.strictEqual(cookieResult.authenticated, true, "Cookie transport must authenticate");
+-  assert.strictEqual(cookieResult.userId, "coderxpadmin");
+-
+-  // C. Bearer Header Transport
+-  const bearerHeaders = new Headers({
+-    authorization: `Bearer ${token}`,
+-  });
+-  const bearerReq = new Request("https://coderxp.pro/api/agent/stream", {
+-    headers: bearerHeaders,
+-  });
+-  const bearerResult = validateRequestAuth(bearerReq);
+-  assert.strictEqual(bearerResult.authenticated, true, "Bearer header transport must authenticate");
+-
+-  // D. Custom Header Transport
+-  const customHeaders = new Headers({
+-    "x-coderxp-session": token,
+-  });
+-  const customReq = new Request("https://coderxp.pro/api/agent/stream", {
+-    headers: customHeaders,
+-  });
+-  const customResult = validateRequestAuth(customReq);
+-  assert.strictEqual(customResult.authenticated, true, "Custom header transport must authenticate");
+-
+-  console.log("[PASS] Multi-transport request authentication verified.");
+-
+-  console.log("\n==========================================================================");
+-  console.log("   SUCCESS: ALL AUTH & SESSION REGRESSION SUITE ASSERTIONS PASSED (100%)  ");
+-  console.log("==========================================================================");
++  try {
++    fs.rmSync(TEST_DIR, { recursive: true, force: true });
++  } catch {
++    // ignore
++  }
++
++  console.log("\n================================================");
++  console.log("  SUCCESS: AUTH & SESSION SUITE PASSED");
++  console.log("================================================");
+ }
+ 
+ main().catch((err) => {
+diff --git a/scripts/test-auth-config-fail-closed.ts b/scripts/test-auth-config-fail-closed.ts
+new file mode 100644
+index 0000000..6de1b55
+--- /dev/null
++++ b/scripts/test-auth-config-fail-closed.ts
+@@ -0,0 +1,193 @@
++/**
++ * Configuration fail-closed regression: missing secrets must not soft-fail to defaults.
++ * Isolated child processes avoid module cache masking unset configuration.
++ */
++import assert from "node:assert/strict";
++import { spawnSync } from "node:child_process";
++import fs from "node:fs";
++import path from "node:path";
++import os from "node:os";
++
++const root = path.resolve(__dirname, "..");
++const tsxBin = path.join(root, "node_modules", ".bin", "tsx");
++
++function runCase(name: string, env: Record<string, string>, scriptBody: string): void {
++  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "coderxp-cfg-"));
++  const scriptPath = path.join(dir, "case.ts");
++  fs.writeFileSync(scriptPath, scriptBody, "utf8");
++  const result = spawnSync(tsxBin, [scriptPath], {
++    cwd: root,
++    env: { ...process.env, ...env, NODE_OPTIONS: "" },
++    encoding: "utf8",
++    timeout: 30000,
++  });
++  const out = `${result.stdout || ""}\n${result.stderr || ""}`;
++  if (result.status !== 0) {
++    console.error(`Case ${name} failed status=${result.status}\n${out}`);
++  }
++  assert.equal(result.status, 0, `case ${name} exit`);
++  assert.ok(out.includes("CASE_OK"), `case ${name} marker: ${out}`);
++  try {
++    fs.rmSync(dir, { recursive: true, force: true });
++  } catch {
++    // ignore
++  }
++  console.log(`[PASS] ${name}`);
++}
++
++console.log("=== AUTH CONFIG FAIL-CLOSED ===");
++
++runCase(
++  "missing AUTH_SESSION_SECRET",
++  {
++    AUTH_SESSION_SECRET: "",
++    DEVBOX_TOKEN_SECRET: "test-only-devbox-secret-min-32-chars!!!",
++    AUTH_ADMIN_PASSWORD: "temp-pass-for-config-test-onlyxx",
++    AUTH_PASSWORD_FILE: path.join(os.tmpdir(), "no-auth-file-a"),
++  },
++  `
++import { createSessionToken, __resetAuthSecretCacheForTests } from ${JSON.stringify(path.join(root, "lib/server/auth.ts"))};
++__resetAuthSecretCacheForTests();
++try {
++  createSessionToken("u", "e@x.com");
++  console.error("UNEXPECTED_SUCCESS");
++  process.exit(2);
++} catch (e) {
++  const msg = e instanceof Error ? e.message : String(e);
++  if (!msg.includes("AUTH_SESSION_SECRET")) {
++    console.error("Unexpected:", msg);
++    process.exit(3);
++  }
++  console.log("CASE_OK");
++}
++`,
++);
++
++runCase(
++  "missing admin credentials",
++  {
++    AUTH_SESSION_SECRET: "test-only-session-secret-min-32-chars!!",
++    DEVBOX_TOKEN_SECRET: "test-only-devbox-secret-min-32-chars!!!",
++    AUTH_ADMIN_PASSWORD: "",
++    AUTH_PASSWORD_FILE: path.join(os.tmpdir(), "no-auth-file-b-xyz"),
++  },
++  `
++import {
++  verifyAdminCredentials,
++  loadPersistedAdminPassword,
++  __resetAuthSecretCacheForTests,
++} from ${JSON.stringify(path.join(root, "lib/server/auth.ts"))};
++__resetAuthSecretCacheForTests();
++const ok = verifyAdminCredentials("coderxpadmin", "anything");
++if (ok) {
++  console.error("UNEXPECTED_AUTH");
++  process.exit(2);
++}
++try {
++  loadPersistedAdminPassword();
++  console.error("UNEXPECTED_LOAD");
++  process.exit(3);
++} catch (e) {
++  const msg = e instanceof Error ? e.message : String(e);
++  if (!/not configured|credentials/i.test(msg)) {
++    console.error("Unexpected:", msg);
++    process.exit(4);
++  }
++  console.log("CASE_OK");
++}
++`,
++);
++
++runCase(
++  "missing DEVBOX_TOKEN_SECRET",
++  {
++    AUTH_SESSION_SECRET: "test-only-session-secret-min-32-chars!!",
++    DEVBOX_TOKEN_SECRET: "",
++  },
++  `
++import {
++  mintDevboxWssToken,
++  __resetDevboxTokenSecretCacheForTests,
++} from ${JSON.stringify(path.join(root, "lib/server/devbox-token.ts"))};
++__resetDevboxTokenSecretCacheForTests();
++try {
++  mintDevboxWssToken("u", "p");
++  console.error("UNEXPECTED_SUCCESS");
++  process.exit(2);
++} catch (e) {
++  const msg = e instanceof Error ? e.message : String(e);
++  if (!msg.includes("DEVBOX_TOKEN_SECRET")) {
++    console.error("Unexpected:", msg);
++    process.exit(3);
++  }
++  console.log("CASE_OK");
++}
++`,
++);
++
++runCase(
++  "malformed password file does not fall back to env",
++  {
++    AUTH_SESSION_SECRET: "test-only-session-secret-min-32-chars!!",
++    DEVBOX_TOKEN_SECRET: "test-only-devbox-secret-min-32-chars!!!",
++    AUTH_ADMIN_PASSWORD: "env-password-must-not-be-used-here",
++    AUTH_PASSWORD_FILE: "",
++  },
++  `
++import fs from "node:fs";
++import path from "node:path";
++import os from "node:os";
++const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bad-auth-file-"));
++const badFile = path.join(dir, "bad-hash.txt");
++fs.writeFileSync(badFile, "not-a-valid-pbkdf2-hash\\n", "utf8");
++process.env.AUTH_PASSWORD_FILE = badFile;
++process.env.AUTH_ADMIN_PASSWORD = "env-password-must-not-be-used-here";
++import(${JSON.stringify(path.join(root, "lib/server/auth.ts"))}).then((auth) => {
++  auth.__resetAuthSecretCacheForTests();
++  try {
++    auth.loadPersistedAdminPassword();
++    console.error("UNEXPECTED_LOAD");
++    process.exit(2);
++  } catch (e) {
++    const msg = e instanceof Error ? e.message : String(e);
++    if (!/unreadable|does not contain a valid|Refusing to fall back/i.test(msg)) {
++      console.error("Unexpected:", msg);
++      process.exit(3);
++    }
++    if (auth.verifyAdminCredentials("coderxpadmin", "env-password-must-not-be-used-here")) {
++      console.error("ENV_FALLBACK_ACTIVATED");
++      process.exit(4);
++    }
++    console.log("CASE_OK");
++  }
++}).catch((e) => { console.error(e); process.exit(1); });
++`,
++);
++
++runCase(
++  "short AUTH_SESSION_SECRET rejected",
++  {
++    AUTH_SESSION_SECRET: "too-short",
++    DEVBOX_TOKEN_SECRET: "test-only-devbox-secret-min-32-chars!!!",
++    AUTH_ADMIN_PASSWORD: "temp-pass-for-config-test-onlyxx",
++    AUTH_PASSWORD_FILE: path.join(os.tmpdir(), "no-auth-file-short"),
++  },
++  `
++import { createSessionToken, __resetAuthSecretCacheForTests } from ${JSON.stringify(path.join(root, "lib/server/auth.ts"))};
++__resetAuthSecretCacheForTests();
++try {
++  createSessionToken("u", "e@x.com");
++  console.error("UNEXPECTED_SUCCESS");
++  process.exit(2);
++} catch (e) {
++  const msg = e instanceof Error ? e.message : String(e);
++  if (!msg.includes("AUTH_SESSION_SECRET")) {
++    console.error("Unexpected:", msg);
++    process.exit(3);
++  }
++  console.log("CASE_OK");
++}
++`,
++);
++
++console.log("=== ALL CONFIG FAIL-CLOSED TESTS PASSED ===");
+diff --git a/scripts/test-auth-password.ts b/scripts/test-auth-password.ts
+index 914cddd..248ebbc 100644
+--- a/scripts/test-auth-password.ts
++++ b/scripts/test-auth-password.ts
+@@ -1,65 +1,134 @@
++/**
++ * Auth password hashing, config fail-closed, persistence, and session invalidation.
++ * Uses disposable credentials only — no production secrets or legacy bootstrap defaults.
++ */
+ import assert from "node:assert/strict";
+ import fs from "node:fs";
+-import {
+-  hashPassword,
+-  verifyPassword,
+-  verifyAdminCredentials,
+-  updateAdminPassword,
+-  loadPersistedAdminPassword,
+-  ADMIN_CONFIG,
+-  AUTH_PASSWORD_FILE,
+-} from "../lib/server/auth";
++import path from "node:path";
++import os from "node:os";
++
++const TEST_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "coderxp-auth-test-"));
++const PASSWORD_FILE = path.join(TEST_DIR, "auth-admin-hash.txt");
++
++process.env.AUTH_SESSION_SECRET =
++  process.env.AUTH_SESSION_SECRET || "test-only-session-secret-min-32-chars!!";
++process.env.DEVBOX_TOKEN_SECRET =
++  process.env.DEVBOX_TOKEN_SECRET || "test-only-devbox-secret-min-32-chars!!!";
++process.env.AUTH_PASSWORD_FILE = PASSWORD_FILE;
++process.env.AUTH_ADMIN_PASSWORD = "disposable-test-password-2026";
++delete process.env.CODERXP_AUTH_PASS;
+ 
+ async function main() {
+-  console.log("=== RUNNING AUTH PASSWORD HASHING & CHANGE TESTS ===");
+-
+-  // 1. Initial State: Valid PBKDF2 Credential Verification
+-  console.log("--- 1. Initial Credential Verification ---");
+-  const initialPass = "coderxp-pilot-2026";
+-  assert.equal(verifyAdminCredentials("coderxpadmin", initialPass), true);
+-  assert.equal(verifyAdminCredentials("coderxpadmin", "wrong-pass"), false);
+-  assert.equal(verifyAdminCredentials("paul@coderxp.pro", initialPass), true);
+-  console.log("[PASS] Initial credentials verified correctly.");
+-
+-  // 2. PBKDF2 Hashing & Verification
+-  console.log("--- 2. PBKDF2 Hashing & Verification ---");
+-  const hashed = hashPassword("super-secret-paul-pass-2026");
+-  assert.ok(hashed.startsWith("pbkdf2$100000$"), "PBKDF2 prefix and iterations match");
+-  assert.equal(verifyPassword("super-secret-paul-pass-2026", hashed), true);
+-  assert.equal(verifyPassword("wrong-attempt", hashed), false);
+-  console.log("[PASS] PBKDF2 hashing and constant-time verification passed.");
+-
+-  // 3. Strict Rejection of Plaintext Stored Values (Zero Plaintext Fallback)
+-  console.log("--- 3. Plaintext Stored Hash Rejection ---");
+-  assert.equal(verifyPassword("plaintext-password", "plaintext-password"), false, "Plaintext stored passwords must fail verification");
+-  assert.equal(verifyPassword("coderxp-pilot-2026", "coderxp-pilot-2026"), false, "Plaintext bootstrap string must fail verification");
+-  console.log("[PASS] Plaintext stored values strictly rejected without fallback.");
+-
+-  // 4. Password Update & Disk Persistence
+-  console.log("--- 4. Password Update & Disk Persistence ---");
+-  const newHash = updateAdminPassword("new-authenticated-password-2026");
+-  assert.ok(newHash.startsWith("pbkdf2$100000$"), "Admin password updated to PBKDF2 hash");
+-  assert.equal(verifyAdminCredentials("coderxpadmin", "new-authenticated-password-2026"), true);
+-  assert.equal(verifyAdminCredentials("coderxpadmin", initialPass), false);
+-
+-  // Verify file was written
+-  if (fs.existsSync(AUTH_PASSWORD_FILE)) {
+-    const fileContent = fs.readFileSync(AUTH_PASSWORD_FILE, "utf8").trim();
+-    assert.equal(fileContent, newHash, "Password file on disk matches updated PBKDF2 hash");
+-    const reloaded = loadPersistedAdminPassword();
+-    assert.equal(reloaded, newHash, "loadPersistedAdminPassword correctly re-loads the persisted hash");
+-    console.log("[PASS] Disk persistence and reload verified.");
+-  } else {
+-    console.log("[PASS] In-memory update verified (file path not writable in this test environment).");
++  const auth = await import("../lib/server/auth");
++  auth.__resetAuthSecretCacheForTests();
++
++  console.log("=== AUTH PASSWORD & CONFIG FAIL-CLOSED TESTS ===");
++
++  console.log("--- 1. Explicit credential verification ---");
++  assert.equal(
++    auth.verifyAdminCredentials("coderxpadmin", "disposable-test-password-2026"),
++    true,
++  );
++  assert.equal(auth.verifyAdminCredentials("coderxpadmin", "wrong-pass"), false);
++  assert.equal(
++    auth.verifyAdminCredentials("paul@coderxp.pro", "disposable-test-password-2026"),
++    true,
++  );
++  console.log("[PASS] Explicit credentials verified.");
++
++  console.log("--- 2. PBKDF2 hashing & verification ---");
++  const hashed = auth.hashPassword("super-secret-test-pass-2026");
++  assert.ok(hashed.startsWith("pbkdf2$100000$"));
++  assert.equal(auth.verifyPassword("super-secret-test-pass-2026", hashed), true);
++  assert.equal(auth.verifyPassword("wrong-attempt", hashed), false);
++  console.log("[PASS] PBKDF2 hashing and constant-time verification.");
++
++  console.log("--- 3. Plaintext stored hash rejection ---");
++  assert.equal(auth.verifyPassword("plaintext-password", "plaintext-password"), false);
++  assert.equal(auth.verifyPassword("coderxp-pilot-2026", "coderxp-pilot-2026"), false);
++  console.log("[PASS] Plaintext stored values strictly rejected.");
++
++  console.log("--- 4. Password update, persistence, session invalidation ---");
++  const genBefore = auth.getCredentialGeneration();
++  const oldToken = auth.createSessionToken(auth.ADMIN_CONFIG.userId, auth.ADMIN_CONFIG.email);
++  assert.equal(auth.verifySessionToken(oldToken).valid, true);
++
++  const newHash = auth.updateAdminPassword("new-authenticated-password-2026");
++  assert.ok(newHash.startsWith("pbkdf2$100000$"));
++  assert.equal(
++    auth.verifyAdminCredentials("coderxpadmin", "new-authenticated-password-2026"),
++    true,
++  );
++  assert.equal(
++    auth.verifyAdminCredentials("coderxpadmin", "disposable-test-password-2026"),
++    false,
++  );
++  assert.ok(fs.existsSync(PASSWORD_FILE));
++  const fileContent = fs.readFileSync(PASSWORD_FILE, "utf8");
++  assert.ok(fileContent.includes(newHash.split("\n")[0]));
++  assert.equal(auth.getCredentialGeneration(), genBefore + 1);
++
++  const oldVerify = auth.verifySessionToken(oldToken);
++  assert.equal(oldVerify.valid, false, "Sessions must invalidate after password change");
++
++  const newToken = auth.createSessionToken(auth.ADMIN_CONFIG.userId, auth.ADMIN_CONFIG.email);
++  assert.equal(auth.verifySessionToken(newToken).valid, true);
++  console.log("[PASS] Password update persists and invalidates prior sessions.");
++
++  console.log("--- 5. Rejected legacy bootstrap defaults ---");
++  assert.equal(
++    auth.verifyAdminCredentials("coderxpadmin", "coderxp-pilot-2026"),
++    false,
++    "Legacy bootstrap password must not authenticate",
++  );
++  console.log("[PASS] Legacy bootstrap password rejected.");
++
++  console.log("--- 6. Generation survives simulated process restart ---");
++  const genAfterChange = auth.getCredentialGeneration();
++  const tokenBeforeRestart = newToken;
++  auth.__resetAuthSecretCacheForTests();
++  assert.equal(auth.getCredentialGeneration(), genAfterChange, "generation must reload from file");
++  assert.equal(
++    auth.verifySessionToken(tokenBeforeRestart).valid,
++    true,
++    "session minted at current generation remains valid after restart",
++  );
++  assert.equal(auth.verifySessionToken(oldToken).valid, false, "pre-change session still invalid after restart");
++  console.log("[PASS] Credential generation persists across restart (file-backed).");
++
++  console.log("--- 7. Password persistence failure does not activate new credential ---");
++  const hashBeforeFail = auth.ADMIN_CONFIG.password;
++  const genBeforeFail = auth.getCredentialGeneration();
++  const tokenBeforeFail = auth.createSessionToken(auth.ADMIN_CONFIG.userId, auth.ADMIN_CONFIG.email);
++  fs.unlinkSync(PASSWORD_FILE);
++  fs.mkdirSync(PASSWORD_FILE, { recursive: true });
++  let threw = false;
++  try {
++    auth.updateAdminPassword("should-not-activate-password-xx");
++  } catch {
++    threw = true;
+   }
++  assert.equal(threw, true, "updateAdminPassword must throw when persistence fails");
++  assert.equal(auth.ADMIN_CONFIG.password, hashBeforeFail, "in-memory hash must not change on failure");
++  assert.equal(auth.getCredentialGeneration(), genBeforeFail, "generation must not bump on failure");
++  assert.equal(auth.verifySessionToken(tokenBeforeFail).valid, true, "prior session remains valid");
++  assert.equal(
++    auth.verifyAdminCredentials("coderxpadmin", "should-not-activate-password-xx"),
++    false,
++  );
++  fs.rmSync(PASSWORD_FILE, { recursive: true, force: true });
++  console.log("[PASS] Persistence failure leaves prior credential active.");
+ 
+-  // Restore initial password
+-  updateAdminPassword(initialPass);
++  try {
++    fs.rmSync(TEST_DIR, { recursive: true, force: true });
++  } catch {
++    // ignore
++  }
+ 
+   console.log("=== ALL AUTH PASSWORD TESTS PASSED ===");
+ }
+ 
+ main().catch((err) => {
+-  console.error(err);
++  console.error("Auth password test failed:", err);
+   process.exit(1);
+ });
+diff --git a/scripts/test-devbox-broker-auth.ts b/scripts/test-devbox-broker-auth.ts
+index 1b49c92..8c1cc98 100644
+--- a/scripts/test-devbox-broker-auth.ts
++++ b/scripts/test-devbox-broker-auth.ts
+@@ -1,5 +1,15 @@
+ import assert from "node:assert/strict";
+-import { mintDevboxWssToken, verifyDevboxWssToken } from "../lib/server/devbox-token";
++
++process.env.DEVBOX_TOKEN_SECRET =
++  process.env.DEVBOX_TOKEN_SECRET || "test-only-devbox-secret-min-32-chars!!!";
++
++import {
++  mintDevboxWssToken,
++  verifyDevboxWssToken,
++  __resetDevboxTokenSecretCacheForTests,
++} from "../lib/server/devbox-token";
++
++__resetDevboxTokenSecretCacheForTests();
+ 
+ async function main() {
+   console.log("=== RUNNING DEVBOX BROKER WSS AUTHENTICATION TESTS ===");
+@@ -7,7 +17,6 @@ async function main() {
+   const userId = "user-alice-123";
+   const projectId = "proj-acme-frontend";
+ 
+-  // 1. Valid Token Mint & Verification
+   console.log("--- 1. Valid Token Minting & Verification ---");
+   const token = mintDevboxWssToken(userId, projectId);
+   assert.ok(token && typeof token === "string", "Token string generated");
+@@ -17,14 +26,12 @@ async function main() {
+   assert.equal(verified.userId, userId, "Token returns authenticated userId");
+   console.log("[PASS] Valid HMAC-signed token verified successfully.");
+ 
+-  // 2. Replay Prevention (Single-Use Token)
+   console.log("--- 2. Single-Use Replay Prevention ---");
+   const replay = verifyDevboxWssToken(token, projectId);
+   assert.equal(replay.valid, false, "Consumed token rejected on replay");
+   assert.ok(replay.error?.includes("already been consumed"), "Error specifies single-use replay prevention");
+   console.log("[PASS] Consumed single-use token rejected on secondary connection attempt.");
+ 
+-  // 3. Cross-Project / Cross-User Access Rejection
+   console.log("--- 3. Cross-Project Access Rejection ---");
+   const token2 = mintDevboxWssToken(userId, projectId);
+   const crossProject = verifyDevboxWssToken(token2, "proj-other-user-bank");
+@@ -32,7 +39,6 @@ async function main() {
+   assert.ok(crossProject.error?.includes("project mismatch"), "Error indicates unauthorized cross-project access");
+   console.log("[PASS] Cross-user token handshake rejected immediately.");
+ 
+-  // 4. Tampered Signature Rejection
+   console.log("--- 4. Tampered Signature Rejection ---");
+   const token3 = mintDevboxWssToken(userId, projectId);
+   const tamperedToken = token3.slice(0, -5) + "xxxxx";
