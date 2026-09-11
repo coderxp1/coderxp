@@ -66,9 +66,31 @@ After a successful change, the hash and credential generation are stored in
   generation would not match unless the file is retained. **Keep the password file
   durable across restarts** in any multi-instance or restart-heavy deployment.
 
-Multi-process note: generation and password state are file-backed, not a shared
-in-memory store. Concurrent password changes from multiple processes are not
-coordinated beyond atomic rename of the hash file; prefer a single writer.
+## Supported process model (credential generation)
+
+**Supported:** a single Node process (or a single writer of `AUTH_PASSWORD_FILE`)
+owns password changes. Session verification in that process always loads the
+current generation from the password file (or in-memory state after a successful
+change in the same process).
+
+**Not supported without additional work:** multiple concurrent authentication
+processes that each keep an in-memory credential-generation cache. A password
+change in process A updates the file and invalidates sessions for subsequent
+verifications in A; process B may continue accepting sessions minted under the
+old generation until B restarts or clears its credential cache. There is no
+cross-process cache invalidation signal.
+
+Overlapping `updateAdminPassword` calls: only one writer should run. Concurrent
+writers rely on temp-file + rename for a single file write, but two writers can
+still race on generation numbers. Treat concurrent password-change requests as
+unsupported; serialize them at the application boundary (single admin operator
+or a single API instance handling change-password).
+
+Committed coverage:
+- Persistence failure leaves prior credential active (`test-auth-password`)
+- Generation reload after simulated restart (`test-auth-password`)
+- Env-only provisioning requires a successful file write before activation
+  (`updateAdminPassword` throws otherwise; documented above)
 
 ## Migration from the previous baseline
 
