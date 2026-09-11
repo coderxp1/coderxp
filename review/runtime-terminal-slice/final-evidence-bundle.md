@@ -93,6 +93,18 @@ Evidence commit `f346ee6` (`git diff --numstat 2e39b88..f346ee6`):
 
 Full slice `4f84639..f346ee6`: **14 files changed, 2038 insertions, 19 deletions.**
 
+This revision (render verification, committed on top of `9fb6848`):
+
+```
+ 155    0  scripts/test-agent-terminal-render.ts               (new)
+   1    1  package.json        (wires the render suite into npm test)
+  42   12  review/runtime-terminal-slice/final-evidence-bundle.md
+```
+
+`app/layout.tsx` is **not** in this list and has not been modified at any point
+in the slice — verified by `git diff --name-only 5640a84 HEAD -- app/layout.tsx`
+returning empty.
+
 ---
 
 ## 3. Every test command and exit code
@@ -103,10 +115,11 @@ All re-run this session on the recovered tree at `f346ee6`, node v22.22.3.
 |---|---|---|
 | 1 | `npx tsc --noEmit` | **0** |
 | 2 | `npx eslint` on the nine slice files | **0** (zero output lines) |
-| 3 | `npm test` (full aggregate chain) | **0** — 931 `[PASS]` lines |
+| 3 | `npm test` (full aggregate chain) | **0** — 936 `[PASS]` lines |
 | 4 | `npx tsx scripts/smoke-agent-runtime-live.ts` | **0** — `pass=32 fail=0` |
-| 5 | `npm run build` (unmodified) | **1** — see §8 |
-| 6 | `npm ci` (rebuild after rollback) | 0 — `node-pty` rebuilt from source |
+| 5 | `npx tsx scripts/test-agent-terminal-render.ts` | **0** — 5/5 sections |
+| 6 | `npm run build` (unmodified) | **1** — see §9 |
+| 7 | `npm ci` (rebuild after rollback) | 0 — `node-pty` rebuilt from source |
 
 The nine linted files: `lib/workspace/agent-runtime-client.ts`,
 `app/workspace/components/AgentTerminalPanel.tsx`,
@@ -124,6 +137,7 @@ Per-suite section counts, each run individually after the changes:
 |---|---|
 | `test-agent-runtime-binding.ts` (new) | 5 |
 | `test-agent-terminal-client.ts` (new) | 5 |
+| `test-agent-terminal-render.ts` (new) | 5 |
 | `test-agent-runtime-authz.ts` | 12 |
 | `test-action-authorization.ts` | 17 |
 | `test-sanitizer-bytes.ts` | 6 |
@@ -292,15 +306,31 @@ element, argv length, cwd (`resource`), `networkNeed`, `execMode`, and
    computed in-sandbox, and the document says so. No network-policy exception
    was granted, assumed, or used. Every result above is Node v22.22.3
    iteration evidence only.
-3. **Browser rendering of `AgentTerminalPanel` — unverified.** The dev server
-   cannot compile `app/layout.tsx` for the same font reason, so the panel has
-   never rendered in a browser. What is verified: `tsc --noEmit` and `eslint`
-   pass on both new UI files, and `test-agent-terminal-client.ts` exercises the
-   client logic the panel depends on (SSE frame/gap/state parsing, heartbeat
-   and malformed-record tolerance, live subscription over a real
-   `ReadableStream` with cursor advance and single-shot dispose, honest outcome
-   rendering, typed error mapping). The React render tree itself is
-   **unverified**.
+3. **Browser rendering of `AgentTerminalPanel` — partially closed, still not
+   browser-verified.** The dev server cannot compile `app/layout.tsx` for the
+   same font reason, so the panel has not rendered in a browser.
+
+   What is now verified beyond typecheck: `scripts/test-agent-terminal-render.ts`
+   bundles the real component tree with esbuild and renders `RuntimePanel`
+   (including `AgentTerminalPanel`) to static markup via `react-dom/server`.
+   This required **no change to `app/layout.tsx`** — it bypasses Next.js
+   routing entirely, so the build-blocker evidence in item 1 is untouched and
+   no font substitution was performed. Assertions, scoped to the agent pane so
+   the PORTS pane's legitimate "RUNNING" pill cannot satisfy a check:
+   - AGENT renders as its own pane and tab alongside the user TERMINAL
+   - initial state reads `NO SESSION` / `conn: idle`, and contains none of
+     `RUNNING`, `DEAD`, or `UNKNOWN` — no fabricated state
+   - observe-only by default, with the keystroke-refusal notice, plus
+     Take input / Release input
+   - Allocate, Reconnect, Resize, Interrupt, Stop, Probe all render
+   - exactly 7 session-scoped controls disabled, with Allocate the only
+     enabled one
+   - terminal container carries `aria-label="Agent session terminal"`
+
+   Still **unverified**: real browser layout, xterm canvas behaviour, and live
+   network streaming in a browser. SSR runs no effects, so the xterm instance
+   is never constructed and no fetch is issued. Those require the build to
+   complete.
 4. **Live smoke is environment-dependent and is not aggregate-suite evidence.**
    It requires linux + non-root uid + user/network namespaces + `prlimit` +
    native `node-pty`. It is deliberately **not** part of `npm test`. Its
