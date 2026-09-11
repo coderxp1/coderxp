@@ -20,7 +20,9 @@ Optional:
 
 ## Credential source precedence (fail closed)
 
-1. If `AUTH_PASSWORD_FILE` exists and the first line is a valid `pbkdf2$100000$...` hash, use it (optional second line = credential generation).
+1. If `AUTH_PASSWORD_FILE` **exists** on disk:
+   - Valid `pbkdf2$100000$...` hash (optional second line = generation) → use it.
+   - Exists but unreadable or malformed → **configuration failure**. Do **not** fall back to `AUTH_ADMIN_PASSWORD`.
 2. Else if `AUTH_ADMIN_PASSWORD` is set:
    - If it already starts with `pbkdf2$100000$`, use as hash.
    - Otherwise treat as plaintext, hash with PBKDF2, and attempt to persist to `AUTH_PASSWORD_FILE`.
@@ -35,9 +37,10 @@ export AUTH_ADMIN_PASSWORD="local-only-change-me"
 export AUTH_PASSWORD_FILE="$PWD/.data/auth-admin-hash.txt"
 mkdir -p .data
 
+npx tsx scripts/test-auth-config-fail-closed.ts
 npx tsx scripts/test-auth-password.ts
 npx tsx scripts/test-app-auth-session.ts
-npx tsx scripts/test-auth-config-fail-closed.ts
+npx tsx scripts/test-devbox-broker-auth.ts
 ```
 
 ## Password change behavior
@@ -45,6 +48,27 @@ npx tsx scripts/test-auth-config-fail-closed.ts
 - New password is written to `AUTH_PASSWORD_FILE` **before** it is activated in memory.
 - Credential generation is incremented; existing sessions are rejected.
 - The change-password API clears the session cookie; the client must sign in again.
+
+## Environment-only provisioning and password changes
+
+When credentials are first loaded from `AUTH_ADMIN_PASSWORD` (no password file yet),
+`updateAdminPassword` still **requires a successful write** to `AUTH_PASSWORD_FILE`
+before activating the new hash. If the file cannot be written, the change fails and
+the previous in-memory credential remains active.
+
+After a successful change, the hash and credential generation are stored in
+`AUTH_PASSWORD_FILE`. On process restart:
+
+- If the file exists and is valid, it is authoritative (generation is preserved;
+  prior sessions with a lower generation stay invalid).
+- If the file is missing but `AUTH_ADMIN_PASSWORD` is still set, the env value is
+  used again at generation 1 — sessions from a previous process that had bumped
+  generation would not match unless the file is retained. **Keep the password file
+  durable across restarts** in any multi-instance or restart-heavy deployment.
+
+Multi-process note: generation and password state are file-backed, not a shared
+in-memory store. Concurrent password changes from multiple processes are not
+coordinated beyond atomic rename of the hash file; prefer a single writer.
 
 ## Migration from the previous baseline
 
