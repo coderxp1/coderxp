@@ -176,6 +176,11 @@ export class GrantStore {
     const need = descriptor.networkNeed ?? "none";
     if (need === "external") return { ok: false, code: "GRANT_OUT_OF_SCOPE" };
     if (need === "loopback" && grant.egress !== "loopback") return { ok: false, code: "GRANT_OUT_OF_SCOPE" };
+    // Shell-script execution is an explicit gated capability: it always
+    // requires a one-time approval, never a standing grant.
+    if (descriptor.action === "exec" && descriptor.execMode === "shell-script") {
+      return { ok: false, code: "GRANT_OUT_OF_SCOPE" };
+    }
     return { ok: true };
   }
 }

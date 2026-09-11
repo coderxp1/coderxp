@@ -1,15 +1,19 @@
 /**
  * Authorization slice (DRAFT) — single-use HMAC-bound approvals.
  *
- * An approval binds actor, project, agent session, exact action, argument
- * hash, destination, revision, protected-target flag, operation ID, and
- * expiry under an HMAC signature. It is consumed atomically on first valid
- * presentation; any second presentation is a replay rejection. Verification
- * performs no runtime, storage, credential, or network side effects.
+ * An approval binds the complete normalized effective operation: actor,
+ * project, agent session, exact action, argument hash, resource, network
+ * scope, execution capability, destination, revision, protected-target flag,
+ * operation ID, issuer epoch, and expiry. It is consumed atomically on first
+ * valid presentation; any second presentation is a replay rejection.
+ * Verification performs no runtime, storage, credential, or network side
+ * effects.
  *
- * In-process replay/revocation sets are the draft boundary; durable storage
- * across restarts and processes is a documented follow-up. Approvals never
- * authorize a different operation, session, or argument set.
+ * Single authority: one issuer instance (one epoch) per process. The epoch
+ * invalidates pre-restart approvals, since in-memory consume/revoke sets do
+ * not survive restarts. Cross-process or restart-safe replay protection is
+ * NOT claimed; durable credential storage is follow-up work. Unavailable
+ * authorization state must fail closed at the enforce() layer.
  */
 
 import crypto from "node:crypto";
@@ -19,13 +23,15 @@ import {
   AuditSink,
   AuthorizationError,
 } from "./types";
-import { argsHashFor, timingSafeEqualHex, validateId } from "./util";
+import { argsHashFor, normalizeResourcePath, timingSafeEqualHex, validateId } from "./util";
 import { ACTION_CATEGORY } from "./policy";
 
 export interface ApprovalIssuerOptions {
   now?: () => number;
   defaultTtlMs?: number;
   maxTtlMs?: number;
+  /** 8-byte hex instance epoch. Random per issuer unless injected (tests). */
+  epoch?: string;
 }
 
 export interface ApprovalIssueParams {
@@ -36,6 +42,12 @@ export interface ApprovalIssueParams {
   action: ActionKind;
   /** Validated arguments; bound by hash. */
   args: unknown;
+  /** Project-relative resource ("" when the operation has none). */
+  resource: string;
+  /** Network scope ("" when the operation declares none). */
+  networkNeed: string;
+  /** Execution capability ("" when the operation declares none). */
+  execMode: string;
   destination: string;
   revision: string;
   operationId: string;
@@ -49,6 +61,9 @@ export interface ApprovalBinding {
   agentSessionId: string;
   action: ActionKind;
   argsHash: string;
+  resource: string;
+  networkNeed: string;
+  execMode: string;
   destination: string;
   revision: string;
   operationId: string;
@@ -56,17 +71,21 @@ export interface ApprovalBinding {
 }
 
 interface ApprovalPayload {
-  v: 1;
+  v: 2;
   id: string;
   actorUserId: string;
   projectId: string;
   agentSessionId: string;
   action: ActionKind;
   argsHash: string;
+  resource: string;
+  networkNeed: string;
+  execMode: string;
   destination: string;
   revision: string;
   operationId: string;
   protectedTarget: boolean;
+  epoch: string;
   expiresAt: number;
 }
 
@@ -79,10 +98,14 @@ function canonicalPayloadJson(p: ApprovalPayload): string {
     agentSessionId: p.agentSessionId,
     action: p.action,
     argsHash: p.argsHash,
+    resource: p.resource,
+    networkNeed: p.networkNeed,
+    execMode: p.execMode,
     destination: p.destination,
     revision: p.revision,
     operationId: p.operationId,
     protectedTarget: p.protectedTarget,
+    epoch: p.epoch,
     expiresAt: p.expiresAt,
   });
 }
@@ -91,11 +114,15 @@ function isHex(value: string, bytes: number): boolean {
   return new RegExp(`^[0-9a-f]{${bytes * 2}}$`).test(value);
 }
 
+const NETWORK_SCOPES: ReadonlySet<string> = new Set(["", "none", "loopback", "external"]);
+const EXEC_MODES: ReadonlySet<string> = new Set(["", "argv", "shell-script"]);
+
 export class ApprovalIssuer {
   private readonly secret: string;
   private readonly now: () => number;
   private readonly defaultTtlMs: number;
   private readonly maxTtlMs: number;
+  readonly epoch: string;
   private readonly consumed = new Set<string>();
   private readonly revoked = new Set<string>();
 
@@ -103,10 +130,14 @@ export class ApprovalIssuer {
     if (!secret || secret.length < 32) {
       throw new Error("Approval issuer requires an explicit secret of at least 32 characters (fail closed).");
     }
+    if (options?.epoch !== undefined && !isHex(options.epoch, 8)) {
+      throw new Error("Approval issuer epoch must be 8-byte hex when provided.");
+    }
     this.secret = secret;
     this.now = options?.now ?? Date.now;
     this.defaultTtlMs = options?.defaultTtlMs ?? 10 * 60 * 1000;
     this.maxTtlMs = options?.maxTtlMs ?? 60 * 60 * 1000;
+    this.epoch = options?.epoch ?? crypto.randomBytes(8).toString("hex");
   }
 
   issue(params: ApprovalIssueParams, sink?: AuditSink): { token: ApprovalToken; serialized: string } {
@@ -120,22 +151,30 @@ export class ApprovalIssuer {
     if (typeof params.protectedTarget !== "boolean" || typeof params.destination !== "string" || typeof params.revision !== "string") {
       throw new AuthorizationError("MALFORMED_REQUEST", "approval bindings are malformed.", 400, params.operationId);
     }
+    const resource = params.resource === "" ? "" : normalizeResourcePath(params.resource, params.operationId);
+    if (!NETWORK_SCOPES.has(params.networkNeed) || !EXEC_MODES.has(params.execMode)) {
+      throw new AuthorizationError("MALFORMED_REQUEST", "approval network scope or exec mode is malformed.", 400, params.operationId);
+    }
     const ttlMs = params.ttlMs ?? this.defaultTtlMs;
     if (!Number.isInteger(ttlMs) || ttlMs < 1000 || ttlMs > this.maxTtlMs) {
       throw new AuthorizationError("MALFORMED_REQUEST", "approval ttlMs is out of bounds.", 400, params.operationId);
     }
     const payload: ApprovalPayload = {
-      v: 1,
+      v: 2,
       id: crypto.randomBytes(8).toString("hex"),
       actorUserId: params.actorUserId,
       projectId: params.projectId,
       agentSessionId: params.agentSessionId,
       action: params.action,
       argsHash: argsHashFor(params.args),
+      resource,
+      networkNeed: params.networkNeed,
+      execMode: params.execMode,
       destination: params.destination,
       revision: params.revision,
       operationId: params.operationId,
       protectedTarget: params.protectedTarget,
+      epoch: this.epoch,
       expiresAt: this.now() + ttlMs,
     };
     const payloadJson = canonicalPayloadJson(payload);
@@ -174,7 +213,7 @@ export class ApprovalIssuer {
       throw new AuthorizationError("APPROVAL_INVALID", "Approval payload is malformed.", 403);
     }
     if (
-      raw.v !== 1 ||
+      raw.v !== 2 ||
       typeof raw.id !== "string" ||
       !isHex(raw.id, 8) ||
       typeof raw.actorUserId !== "string" ||
@@ -184,10 +223,17 @@ export class ApprovalIssuer {
       !ACTION_CATEGORY[raw.action as ActionKind] ||
       typeof raw.argsHash !== "string" ||
       !isHex(raw.argsHash, 32) ||
+      typeof raw.resource !== "string" ||
+      typeof raw.networkNeed !== "string" ||
+      !NETWORK_SCOPES.has(raw.networkNeed) ||
+      typeof raw.execMode !== "string" ||
+      !EXEC_MODES.has(raw.execMode) ||
       typeof raw.destination !== "string" ||
       typeof raw.revision !== "string" ||
       typeof raw.operationId !== "string" ||
       typeof raw.protectedTarget !== "boolean" ||
+      typeof raw.epoch !== "string" ||
+      !isHex(raw.epoch, 8) ||
       typeof raw.expiresAt !== "number" ||
       !Number.isInteger(raw.expiresAt) ||
       !isHex(sig, 32)
@@ -195,17 +241,21 @@ export class ApprovalIssuer {
       throw new AuthorizationError("APPROVAL_INVALID", "Approval fields are malformed.", 403);
     }
     const token: ApprovalToken = {
-      v: 1,
+      v: 2,
       id: raw.id,
       actorUserId: raw.actorUserId,
       projectId: raw.projectId,
       agentSessionId: raw.agentSessionId,
       action: raw.action as ActionKind,
       argsHash: raw.argsHash,
+      resource: raw.resource,
+      networkNeed: raw.networkNeed,
+      execMode: raw.execMode,
       destination: raw.destination,
       revision: raw.revision,
       operationId: raw.operationId,
       protectedTarget: raw.protectedTarget,
+      epoch: raw.epoch,
       expiresAt: raw.expiresAt,
       sig,
     };
@@ -213,8 +263,8 @@ export class ApprovalIssuer {
   }
 
   /**
-   * Verification order: signature → revocation → expiry → bindings → replay.
-   * Returns the token ID on success (consumed atomically).
+   * Verification order: signature → epoch → revocation → expiry →
+   * bindings → replay. Returns the token ID on success (consumed atomically).
    */
   verifyAndConsume(input: string | ApprovalToken, expected: ApprovalBinding, sink?: AuditSink): string {
     let token: ApprovalToken;
@@ -233,16 +283,28 @@ export class ApprovalIssuer {
         agentSessionId: token.agentSessionId,
         action: token.action,
         argsHash: token.argsHash,
+        resource: token.resource,
+        networkNeed: token.networkNeed,
+        execMode: token.execMode,
         destination: token.destination,
         revision: token.revision,
         operationId: token.operationId,
         protectedTarget: token.protectedTarget,
+        epoch: token.epoch,
         expiresAt: token.expiresAt,
       });
     }
     const expectedSig = crypto.createHmac("sha256", this.secret).update(payloadJson, "utf8").digest("hex");
     if (!timingSafeEqualHex(token.sig, expectedSig)) {
       throw new AuthorizationError("APPROVAL_INVALID", "Approval signature is invalid.", 403, expected.operationId);
+    }
+    if (token.epoch !== this.epoch) {
+      throw new AuthorizationError(
+        "APPROVAL_INVALID",
+        "Approval was issued by a stale issuer epoch (pre-restart approvals are invalid).",
+        403,
+        expected.operationId,
+      );
     }
     if (this.revoked.has(token.id)) {
       throw new AuthorizationError("APPROVAL_REVOKED", "Approval was revoked.", 403, expected.operationId);
@@ -256,6 +318,9 @@ export class ApprovalIssuer {
       token.agentSessionId === expected.agentSessionId &&
       token.action === expected.action &&
       token.argsHash === expected.argsHash &&
+      token.resource === expected.resource &&
+      token.networkNeed === expected.networkNeed &&
+      token.execMode === expected.execMode &&
       token.destination === expected.destination &&
       token.revision === expected.revision &&
       token.operationId === expected.operationId &&
@@ -263,7 +328,7 @@ export class ApprovalIssuer {
     if (!matches) {
       throw new AuthorizationError(
         "APPROVAL_MISMATCH",
-        "Approval does not match this actor, session, action, arguments, destination, revision, or operation.",
+        "Approval does not match this effective operation (actor, session, action, arguments, resource, network scope, exec mode, destination, revision, or operation).",
         403,
         expected.operationId,
       );

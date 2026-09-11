@@ -62,17 +62,56 @@ export function deepFreezeSafeSnapshot<T>(data: T): Readonly<T> {
 // Safe Truncation & String Scrubbing
 // ---------------------------------------------------------------------------
 
+const utf8Encoder = new TextEncoder();
+
+/** UTF-8 byte length (accurate for multibyte text; TextEncoder works in browsers and Node). */
+export function utf8ByteLength(text: string): number {
+  if (!text || typeof text !== "string") return 0;
+  return utf8Encoder.encode(text).length;
+}
+
+/**
+ * Truncates to at most `maxBytes` UTF-8 bytes without splitting surrogate
+ * pairs (the result is always valid UTF-8). The byte bound is strict:
+ * `utf8ByteLength(truncateUtf8Bytes(t, n)) <= n` for every string `t`.
+ */
+export function truncateUtf8Bytes(text: string, maxBytes: number): string {
+  if (!text || typeof text !== "string") return "";
+  if (!Number.isInteger(maxBytes) || maxBytes <= 0) return "";
+  if (utf8Encoder.encode(text).length <= maxBytes) return text;
+  let lo = 0;
+  let hi = text.length;
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (utf8Encoder.encode(text.slice(0, mid)).length <= maxBytes) {
+      lo = mid;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  let end = lo;
+  if (end > 0) {
+    const last = text.charCodeAt(end - 1);
+    if (last >= 0xd800 && last <= 0xdbff) end -= 1; // back off a split surrogate pair
+  }
+  return text.slice(0, end);
+}
+
 export function truncateAndSanitize(
   text: string,
   maxBytes: number = MAX_MODEL_OUTPUT_BYTES,
 ): string {
   if (!text || typeof text !== "string") return "";
+  const safeMax = Number.isInteger(maxBytes) && maxBytes > 0 ? maxBytes : MAX_MODEL_OUTPUT_BYTES;
   const sanitized = sanitizeString(text);
-  if (sanitized.length <= maxBytes) {
+  if (utf8Encoder.encode(sanitized).length <= safeMax) {
     return sanitized;
   }
-  const keep = Math.max(0, maxBytes - TRUNCATION_NOTICE.length);
-  return sanitized.slice(0, keep) + TRUNCATION_NOTICE;
+  const noticeBytes = utf8Encoder.encode(TRUNCATION_NOTICE).length;
+  if (noticeBytes >= safeMax) {
+    return truncateUtf8Bytes(TRUNCATION_NOTICE, safeMax);
+  }
+  return truncateUtf8Bytes(sanitized, safeMax - noticeBytes) + TRUNCATION_NOTICE;
 }
 
 // ---------------------------------------------------------------------------
@@ -186,12 +225,12 @@ export function projectModelFacingResult(
         safeData = {
           pid: typeof rec.pid === "number" || typeof rec.pid === "string" ? rec.pid : undefined,
           processId: typeof rec.processId === "string" ? rec.processId : undefined,
-          port: typeof rec.port === "number" ? rec.port : 3000,
-          status: "running",
+          port: typeof rec.port === "number" ? rec.port : undefined,
+          status: typeof rec.status === "string" ? rec.status : "unknown",
           output:
             typeof rec.output === "string"
               ? truncateAndSanitize(rec.output, MAX_MODEL_OUTPUT_BYTES)
-              : "Server running on port 3000",
+              : undefined,
         };
         break;
 
@@ -276,21 +315,31 @@ export function formatUserFacingResultSummary(
     case "list_files":
       return `Listed ${Array.isArray(rec.entries) ? rec.entries.length : 0} file entries`;
     case "run_command":
-      return `Command finished with exit code ${rec.exitCode ?? 0}`;
+      return typeof rec.exitCode === "number"
+        ? `Command finished with exit code ${rec.exitCode}`
+        : "Command result recorded (exit code unknown)";
     case "start_process":
-      return `Server running on port ${rec.port ?? 3000} (pid ${rec.pid ?? "active"})`;
+      return `Process start recorded (status ${typeof rec.status === "string" ? sanitizeString(rec.status) : "unknown"}, port ${typeof rec.port === "number" ? rec.port : "unknown"}, pid ${typeof rec.pid === "number" || typeof rec.pid === "string" ? rec.pid : "unknown"})`;
     case "stop_command":
-      return `Stopped process ${sanitizeString(String(rec.commandId ?? ""))}`;
+      return rec.stopped === true
+        ? `Stopped process ${sanitizeString(String(rec.commandId ?? ""))}`
+        : `Stop requested for process ${sanitizeString(String(rec.commandId ?? ""))} (outcome unconfirmed)`;
     case "read_files":
       return `Read ${Array.isArray(rec.files) ? rec.files.length : 0} files`;
     case "read_command_output":
       return `Read output for command ${sanitizeString(String(rec.commandId ?? ""))}`;
     case "get_runtime_status":
       return `Runtime state: ${sanitizeString(String(rec.state ?? "unknown"))}`;
-    case "run_build":
-      return `Build ${rec.success ? "succeeded" : "failed"} (exit code ${rec.exitCode ?? 0})`;
-    case "run_tests":
-      return `Tests ${rec.success ? "passed" : "failed"} (exit code ${rec.exitCode ?? 0})`;
+    case "run_build": {
+      const outcome = rec.success === true ? "succeeded" : rec.success === false ? "failed" : "outcome unknown";
+      const code = typeof rec.exitCode === "number" ? String(rec.exitCode) : "unknown";
+      return `Build ${outcome} (exit code ${code})`;
+    }
+    case "run_tests": {
+      const outcome = rec.success === true ? "passed" : rec.success === false ? "failed" : "outcome unknown";
+      const code = typeof rec.exitCode === "number" ? String(rec.exitCode) : "unknown";
+      return `Tests ${outcome} (exit code ${code})`;
+    }
     default:
       return summarizeToolCall(toolName, rec);
   }

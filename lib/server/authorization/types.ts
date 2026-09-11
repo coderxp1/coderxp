@@ -30,6 +30,7 @@ export type ActionKind =
   | "terminal.input"
   | "terminal.resize"
   | "terminal.interrupt"
+  | "terminal.lease"
   | "preview.create"
   | "preview.access"
   | "preview.revoke"
@@ -60,6 +61,12 @@ export interface OperationDescriptor {
   protectedTarget?: boolean;
   /** Required for `exec`. Grants never cover `external`. */
   networkNeed?: NetworkNeed;
+  /**
+   * Required for `exec`. `"argv"` is direct structured dispatch;
+   * `"shell-script"` is the explicit gated capability for shell-interpreted
+   * execution and always requires an explicit approval (never a grant).
+   */
+  execMode?: "argv" | "shell-script";
 }
 
 export interface AuthorizationPrincipal {
@@ -87,21 +94,28 @@ export interface SessionGrant {
 }
 
 /**
- * Single-use, HMAC-bound approval. Empty string is the stable sentinel for
- * unset optional bindings (agentSessionId, destination, revision).
+ * Single-use, HMAC-bound approval. Binds the complete normalized effective
+ * operation: actor, project, session, exact action, argument hash, resource,
+ * network scope, execution capability, destination, revision,
+ * protected-target flag, operation ID, issuer epoch, and expiry. Empty
+ * string is the stable sentinel for unset optional bindings.
  */
 export interface ApprovalToken {
-  v: 1;
+  v: 2;
   id: string;
   actorUserId: string;
   projectId: string;
   agentSessionId: string;
   action: ActionKind;
   argsHash: string;
+  resource: string;
+  networkNeed: string;
+  execMode: string;
   destination: string;
   revision: string;
   operationId: string;
   protectedTarget: boolean;
+  epoch: string;
   expiresAt: number;
   sig: string;
 }
@@ -121,7 +135,8 @@ export type DenialCode =
   | "GRANT_EXPIRED"
   | "GRANT_REVOKED"
   | "GRANT_OUT_OF_SCOPE"
-  | "DESTINATION_NOT_ALLOWED";
+  | "DESTINATION_NOT_ALLOWED"
+  | "AUTHORIZATION_UNAVAILABLE";
 
 export class AuthorizationError extends Error {
   readonly code: DenialCode;

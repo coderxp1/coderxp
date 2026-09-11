@@ -38,3 +38,6 @@ Thumbs.db
 .vscode/
 .idea/
 .env*
+
+# Local agent-runtime data (session workspaces; never commit)
+.data/

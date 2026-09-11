@@ -12,6 +12,11 @@
  * `verifySessionToken` from lib/server/auth, so password-change generation
  * invalidation and fail-closed secret configuration are inherited. Tests
  * inject a fake validator and never touch real auth state.
+ *
+ * Fail-closed unavailability: missing or throwing authorization
+ * dependencies (session validation, project/session registries, audit
+ * sink) deny with AUTHORIZATION_UNAVAILABLE (HTTP 503). An unaudited
+ * success is never returned.
  */
 
 import { verifySessionToken } from "../auth";
@@ -95,6 +100,17 @@ export interface AuthorizeInput {
 
 export function authorize(deps: AuthorizeDeps, input: AuthorizeInput): AuthorizationSuccess {
   try {
+    if (
+      !deps ||
+      typeof deps.validateSession !== "function" ||
+      !deps.projects ||
+      !deps.sessions ||
+      !deps.approvals ||
+      !deps.grants ||
+      !deps.sink
+    ) {
+      throw new AuthorizationError("AUTHORIZATION_UNAVAILABLE", "Authorization dependencies are unavailable; failing closed.", 503);
+    }
     if (typeof input.token !== "string" || input.token === "") {
       throw new AuthorizationError("NOT_AUTHENTICATED", "Authentication required.", 401);
     }
@@ -137,6 +153,9 @@ export function authorize(deps: AuthorizeDeps, input: AuthorizeInput): Authoriza
           agentSessionId: descriptor.agentSessionId ?? "",
           action: descriptor.action,
           argsHash: argsHashFor(descriptor.args),
+          resource: descriptor.resource ?? "",
+          networkNeed: descriptor.networkNeed ?? "",
+          execMode: descriptor.execMode ?? "",
           destination: descriptor.destination ?? "",
           revision: descriptor.revision ?? "",
           operationId: descriptor.operationId,
@@ -215,19 +234,57 @@ export function authorize(deps: AuthorizeDeps, input: AuthorizeInput): Authoriza
       via: { kind: "grant", credentialId: grant.id },
     };
   } catch (err) {
+    const rawDescriptor =
+      input !== null && typeof input === "object"
+        ? (input.descriptor as Partial<OperationDescriptor> | null)
+        : null;
+    const fallbackProjectId = typeof rawDescriptor?.projectId === "string" ? rawDescriptor.projectId : "";
+    const fallbackSessionId = typeof rawDescriptor?.agentSessionId === "string" ? rawDescriptor.agentSessionId : undefined;
+    const fallbackOperationId = typeof rawDescriptor?.operationId === "string" ? rawDescriptor.operationId : "";
+    const fallbackAction = typeof rawDescriptor?.action === "string" ? rawDescriptor.action : "unknown";
     if (err instanceof AuthorizationError) {
-      const descriptor = input.descriptor as Partial<OperationDescriptor> | null;
+      try {
+        deps.sink.record({
+          ts: Date.now(),
+          actorUserId: null,
+          projectId: fallbackProjectId,
+          ...(fallbackSessionId !== undefined ? { agentSessionId: fallbackSessionId } : {}),
+          operationId: fallbackOperationId,
+          action: fallbackAction,
+          outcome: "denied",
+          reason: err.code,
+        });
+      } catch {
+        throw new AuthorizationError(
+          "AUTHORIZATION_UNAVAILABLE",
+          "Authorization audit is unavailable; failing closed.",
+          503,
+          fallbackOperationId === "" ? undefined : fallbackOperationId,
+        );
+      }
+      throw err;
+    }
+    // Any unexpected dependency failure (session validation, registries,
+    // audit sink) fails closed: best-effort denial audit, then deny.
+    try {
       deps.sink.record({
         ts: Date.now(),
         actorUserId: null,
-        projectId: typeof descriptor?.projectId === "string" ? descriptor.projectId : "",
-        ...(typeof descriptor?.agentSessionId === "string" ? { agentSessionId: descriptor.agentSessionId } : {}),
-        operationId: typeof descriptor?.operationId === "string" ? descriptor.operationId : "",
-        action: typeof descriptor?.action === "string" ? descriptor.action : "unknown",
+        projectId: fallbackProjectId,
+        ...(fallbackSessionId !== undefined ? { agentSessionId: fallbackSessionId } : {}),
+        operationId: fallbackOperationId,
+        action: fallbackAction,
         outcome: "denied",
-        reason: err.code,
+        reason: "AUTHORIZATION_UNAVAILABLE",
       });
+    } catch {
+      // Already failing closed; an unauditable failure still denies.
     }
-    throw err;
+    throw new AuthorizationError(
+      "AUTHORIZATION_UNAVAILABLE",
+      "Authorization state is unavailable; failing closed.",
+      503,
+      fallbackOperationId === "" ? undefined : fallbackOperationId,
+    );
   }
 }

@@ -34,7 +34,7 @@ const SENSITIVE_PREFIX_PATTERNS = [
   /Bearer\s+[A-Za-z0-9._~+/-]*$/i,
   /(?:--)?(?:token|password|passwd|secret|api_?key|auth|credentials)=[^\s'";]*$/i,
   /https?:\/\/[^:\s]+:[^@\s]*$/i,
-  /(?:ghp|sk_live|sk_test|xox[baprs])-[A-Za-z0-9_]*$/i,
+  /(?:ghp|github_pat|sk_live|sk_test|sk-ant|sk-or|xai|hf|xox[baprs])[-_][A-Za-z0-9_.-]*$/i,
 ];
 
 /**

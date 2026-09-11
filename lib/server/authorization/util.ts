@@ -65,6 +65,10 @@ export function timingSafeEqualHex(a: string, b: string): boolean {
  * actual filesystem operation belongs to the workspace slice.
  */
 export function normalizeResourcePath(value: unknown, operationId?: string): string {
+  // Exactly "." (and the already-normalized "") is the explicit
+  // workspace-root encoding; it normalizes to "". Idempotent by design:
+  // descriptors pass validation more than once along the real path.
+  if (value === "." || value === "") return "";
   if (typeof value !== "string" || value.length === 0 || value.length > 1024) {
     throw new AuthorizationError("MALFORMED_REQUEST", "resource must be 1..1024 chars.", 400, operationId);
   }

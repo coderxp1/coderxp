@@ -35,6 +35,7 @@ export const ACTION_CATEGORY: Record<ActionKind, ActionCategory> = {
   "terminal.input": "execute",
   "terminal.resize": "execute",
   "terminal.interrupt": "execute",
+  "terminal.lease": "execute",
   "preview.create": "preview",
   "preview.access": "preview",
   "preview.revoke": "preview",
@@ -162,6 +163,22 @@ export function validateDescriptor(input: unknown, operationId?: string): Operat
   if (action === "exec" && networkNeed === undefined) {
     throw new AuthorizationError("MALFORMED_REQUEST", "exec must declare networkNeed.", 400, descOperationId);
   }
+  let execMode: "argv" | "shell-script" | undefined;
+  if (raw.execMode !== undefined) {
+    if (raw.execMode !== "argv" && raw.execMode !== "shell-script") {
+      throw new AuthorizationError("MALFORMED_REQUEST", "execMode must be 'argv' or 'shell-script'.", 400, descOperationId);
+    }
+    execMode = raw.execMode;
+  }
+  if (action === "exec" && execMode === undefined) {
+    throw new AuthorizationError("MALFORMED_REQUEST", "exec must declare execMode.", 400, descOperationId);
+  }
+  if (action === "exec" && resource === undefined) {
+    throw new AuthorizationError("MALFORMED_REQUEST", "exec must declare resource (working directory; \".\" for root).", 400, descOperationId);
+  }
+  if (action !== "exec" && (execMode !== undefined || networkNeed !== undefined)) {
+    throw new AuthorizationError("MALFORMED_REQUEST", "execMode/networkNeed are only valid for exec.", 400, descOperationId);
+  }
   if ((action === "git.push" || action === "deploy") && destination === undefined) {
     throw new AuthorizationError("MALFORMED_REQUEST", `${action} requires a destination.`, 400, descOperationId);
   }
@@ -177,6 +194,7 @@ export function validateDescriptor(input: unknown, operationId?: string): Operat
     ...(revision !== undefined ? { revision } : {}),
     ...(protectedTarget !== undefined ? { protectedTarget } : {}),
     ...(networkNeed !== undefined ? { networkNeed } : {}),
+    ...(execMode !== undefined ? { execMode } : {}),
   };
 }
 
@@ -194,6 +212,14 @@ export function evaluatePolicy(
   sessions: SessionRegistry,
 ): { needs: CredentialNeed } {
   const owner = projects.getProjectOwner(descriptor.projectId);
+  if (owner === null && descriptor.action === "runtime.allocate") {
+    // First claim: the project does not exist yet, so the allocating actor
+    // becomes its owner. A credential (scoped grant or exact approval,
+    // both actor- and project-bound) is still required, and the runtime
+    // registry enforces the first-claim race. The session being allocated
+    // does not exist yet either, so the session-home check is skipped.
+    return { needs: "grant-or-approval" };
+  }
   if (owner === null || owner !== principal.userId) {
     throw new AuthorizationError(
       "NO_PROJECT_ACCESS",
@@ -202,7 +228,7 @@ export function evaluatePolicy(
       descriptor.operationId,
     );
   }
-  if (descriptor.agentSessionId !== undefined) {
+  if (descriptor.agentSessionId !== undefined && descriptor.action !== "runtime.allocate") {
     const home = sessions.getSessionProject(descriptor.agentSessionId);
     if (home === null || home !== descriptor.projectId) {
       throw new AuthorizationError(

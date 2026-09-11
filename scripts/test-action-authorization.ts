@@ -5,7 +5,10 @@
  * expired, revoked, replayed, and altered approvals; scoped session grants
  * (issue/check/revoke/expiry/review); exec-as-arbitrary-code (no
  * command-name bypass); external actions requiring their own approval;
- * terminal/preview ownership; denial without provider side effects; and a
+ * terminal/preview ownership; full-operation approval binding (resource,
+ * network scope, exec capability); shell-script as an approval-only gated
+ * capability; issuer-epoch invalidation of pre-restart approvals; fail-closed
+ * unavailable state (503); denial without provider side effects; and a
  * redacted audit trail. Deterministic: fixed fixtures plus a manual clock.
  */
 import assert from "node:assert/strict";
@@ -166,7 +169,7 @@ async function main(): Promise<void> {
     const okExec = await runIfAuthorized(fx, {
       token: TOKEN_A,
       grantId: grant.id,
-      descriptor: { operationId: "op-32", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args: { argv: ["npm", "test"] }, networkNeed: "loopback" },
+      descriptor: { operationId: "op-32", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args: { argv: ["npm", "test"] }, networkNeed: "loopback", execMode: "argv" },
     });
     assert.equal(okExec.via.kind, "grant");
     assert.equal(fx.providerCalls.length, 2);
@@ -190,8 +193,9 @@ async function main(): Promise<void> {
     await expectDenial(fx, { token: TOKEN_A, grantId: grant.id, descriptor: { operationId: "op-42", projectId: "projP", agentSessionId: "sessA2", action: "file.write", resource: "src/app.ts", args: {} } }, "GRANT_OUT_OF_SCOPE");
     await expectDenial(fx, { token: TOKEN_A, grantId: grant.id, descriptor: { operationId: "op-43", projectId: "projP", agentSessionId: "sessA1", action: "preview.create", resource: "previews/a" } }, "GRANT_OUT_OF_SCOPE");
     await expectDenial(fx, { token: TOKEN_B, grantId: grant.id, descriptor: { operationId: "op-44", projectId: "projP", agentSessionId: "sessA1", action: "file.write", resource: "src/app.ts", args: {} } }, "NO_PROJECT_ACCESS");
-    await expectDenial(fx, { token: TOKEN_A, grantId: grant.id, descriptor: { operationId: "op-45", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args: { argv: ["curl", "https://example.com"] }, networkNeed: "external" } }, "GRANT_OUT_OF_SCOPE");
-    console.log("[PASS] Out-of-scope grant use denied across all scope axes.");
+    await expectDenial(fx, { token: TOKEN_A, grantId: grant.id, descriptor: { operationId: "op-45", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args: { argv: ["curl", "https://example.com"] }, networkNeed: "external", execMode: "argv" } }, "GRANT_OUT_OF_SCOPE");
+    await expectDenial(fx, { token: TOKEN_A, grantId: grant.id, descriptor: { operationId: "op-46", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args: { script: "npm test" }, networkNeed: "none", execMode: "shell-script" } }, "GRANT_OUT_OF_SCOPE");
+    console.log("[PASS] Out-of-scope grant use denied across all scope axes (incl. shell-script).");
   }
 
   console.log("--- 6. Grant lifecycle: revoke, expiry, unknown, reviewability ---");
@@ -238,20 +242,20 @@ async function main(): Promise<void> {
     const fx = buildFixture();
     const args = { argv: ["npm", "test"] };
     const { serialized } = fx.approvals.issue(
-      { actorUserId: "userA", projectId: "projP", agentSessionId: "sessA1", action: "exec", args, destination: "", revision: "", operationId: "op-70", protectedTarget: false },
+      { actorUserId: "userA", projectId: "projP", agentSessionId: "sessA1", action: "exec", args, resource: "src", networkNeed: "external", execMode: "argv", destination: "", revision: "", operationId: "op-70", protectedTarget: false },
       fx.deps.sink,
     );
     const ok = await runIfAuthorized(fx, {
       token: TOKEN_A,
       approval: serialized,
-      descriptor: { operationId: "op-70", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args, networkNeed: "external" },
+      descriptor: { operationId: "op-70", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args, networkNeed: "external", execMode: "argv" },
     });
     assert.equal(ok.via.kind, "approval");
     assert.equal(fx.providerCalls.length, 1);
     await expectDenial(fx, {
       token: TOKEN_A,
       approval: serialized,
-      descriptor: { operationId: "op-70", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args, networkNeed: "external" },
+      descriptor: { operationId: "op-70", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args, networkNeed: "external", execMode: "argv" },
     }, "APPROVAL_REPLAYED");
     assert.equal(fx.providerCalls.length, 1);
     console.log("[PASS] Approval authorizes once; replay rejected without provider contact.");
@@ -261,31 +265,36 @@ async function main(): Promise<void> {
   {
     const fx = buildFixture();
     const args = { argv: ["npm", "run", "build"] };
-    const base = { actorUserId: "userA", projectId: "projP", agentSessionId: "sessA1", action: "exec" as const, destination: "", revision: "", protectedTarget: false };
+    const base = { actorUserId: "userA", projectId: "projP", agentSessionId: "sessA1", action: "exec" as const, resource: "src", networkNeed: "none", execMode: "argv", destination: "", revision: "", protectedTarget: false };
     const good = fx.approvals.issue({ ...base, args, operationId: "op-80" });
     const forged = good.serialized.slice(0, -1) + (good.serialized.endsWith("0") ? "1" : "0");
-    await expectDenial(fx, { token: TOKEN_A, approval: forged, descriptor: { operationId: "op-80", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args, networkNeed: "none" } }, "APPROVAL_INVALID");
+    await expectDenial(fx, { token: TOKEN_A, approval: forged, descriptor: { operationId: "op-80", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args, networkNeed: "none", execMode: "argv" } }, "APPROVAL_INVALID");
     await expectDenial(fx, { token: TOKEN_A, approval: "not-a-token", descriptor: { operationId: "op-81", projectId: "projP", action: "file.write", resource: "src/a.ts", args: {} } }, "APPROVAL_INVALID");
-    await expectDenial(fx, { token: TOKEN_A, approval: good.serialized, descriptor: { operationId: "op-80", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args: { argv: ["rm", "-rf", "/"] }, networkNeed: "none" } }, "APPROVAL_MISMATCH");
-    await expectDenial(fx, { token: TOKEN_A, approval: good.serialized, descriptor: { operationId: "op-82", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args, networkNeed: "none" } }, "APPROVAL_MISMATCH");
-    await expectDenial(fx, { token: TOKEN_A, approval: good.serialized, descriptor: { operationId: "op-80", projectId: "projP", agentSessionId: "sessA2", action: "exec", resource: "src", args, networkNeed: "none" } }, "APPROVAL_MISMATCH");
-    await expectDenial(fx, { token: TOKEN_B, approval: good.serialized, descriptor: { operationId: "op-80", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args, networkNeed: "none" } }, "NO_PROJECT_ACCESS");
+    await expectDenial(fx, { token: TOKEN_A, approval: good.serialized, descriptor: { operationId: "op-80", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args: { argv: ["rm", "-rf", "/"] }, networkNeed: "none", execMode: "argv" } }, "APPROVAL_MISMATCH");
+    await expectDenial(fx, { token: TOKEN_A, approval: good.serialized, descriptor: { operationId: "op-82", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args, networkNeed: "none", execMode: "argv" } }, "APPROVAL_MISMATCH");
+    await expectDenial(fx, { token: TOKEN_A, approval: good.serialized, descriptor: { operationId: "op-80", projectId: "projP", agentSessionId: "sessA2", action: "exec", resource: "src", args, networkNeed: "none", execMode: "argv" } }, "APPROVAL_MISMATCH");
+    await expectDenial(fx, { token: TOKEN_B, approval: good.serialized, descriptor: { operationId: "op-80", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args, networkNeed: "none", execMode: "argv" } }, "NO_PROJECT_ACCESS");
     const short = fx.approvals.issue({ ...base, args, operationId: "op-83", ttlMs: 1000 });
     now += 2000;
-    await expectDenial(fx, { token: TOKEN_A, approval: short.serialized, descriptor: { operationId: "op-83", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args, networkNeed: "none" } }, "APPROVAL_EXPIRED");
+    await expectDenial(fx, { token: TOKEN_A, approval: short.serialized, descriptor: { operationId: "op-83", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args, networkNeed: "none", execMode: "argv" } }, "APPROVAL_EXPIRED");
     const rev = fx.approvals.issue({ ...base, args, operationId: "op-84" });
     fx.approvals.revoke(rev.token.id, "op-85", fx.deps.sink);
-    await expectDenial(fx, { token: TOKEN_A, approval: rev.serialized, descriptor: { operationId: "op-84", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args, networkNeed: "none" } }, "APPROVAL_REVOKED");
+    await expectDenial(fx, { token: TOKEN_A, approval: rev.serialized, descriptor: { operationId: "op-84", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args, networkNeed: "none", execMode: "argv" } }, "APPROVAL_REVOKED");
     console.log("[PASS] All approval attack variants rejected.");
   }
 
   console.log("--- 10. Exec is arbitrary code: no command-name bypass ---");
   {
     const fx = buildFixture();
-    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-90", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args: { argv: ["npm", "test"] }, networkNeed: "none" } }, "APPROVAL_REQUIRED");
+    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-90", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args: { argv: ["npm", "test"] }, networkNeed: "none", execMode: "argv" } }, "APPROVAL_REQUIRED");
     await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-91", projectId: "projP", action: "exec", resource: "src", args: { argv: ["lint-all"] } } }, "MALFORMED_REQUEST");
+    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-91b", projectId: "projP", action: "exec", resource: "src", args: { argv: ["lint-all"] }, networkNeed: "none" } }, "MALFORMED_REQUEST");
+    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-91c", projectId: "projP", action: "exec", resource: "src", args: { argv: ["lint-all"] }, networkNeed: "none", execMode: "eval" } }, "MALFORMED_REQUEST");
+    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-91d", projectId: "projP", action: "file.write", resource: "src/a.ts", args: {}, execMode: "argv" } }, "MALFORMED_REQUEST");
+    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-91e", projectId: "projP", action: "file.write", resource: "src/a.ts", args: {}, networkNeed: "none" } }, "MALFORMED_REQUEST");
+    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-91f", projectId: "projP", action: "exec", args: { argv: ["id"] }, networkNeed: "none", execMode: "argv" } }, "MALFORMED_REQUEST");
     const readOnly = fx.grants.issue({ actorUserId: "userA", projectId: "projP", agentSessionIds: ["sessA1"], categories: ["read"], resourcePrefixes: ["src"], egress: "none", ttlMs: 60000, createdByOperationId: "op-92" });
-    await expectDenial(fx, { token: TOKEN_A, grantId: readOnly.id, descriptor: { operationId: "op-93", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args: { argv: ["build", "all"] }, networkNeed: "none" } }, "GRANT_OUT_OF_SCOPE");
+    await expectDenial(fx, { token: TOKEN_A, grantId: readOnly.id, descriptor: { operationId: "op-93", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args: { argv: ["build", "all"] }, networkNeed: "none", execMode: "argv" } }, "GRANT_OUT_OF_SCOPE");
     console.log("[PASS] Harmless-looking command names grant nothing.");
   }
 
@@ -302,10 +311,10 @@ async function main(): Promise<void> {
     await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-107", projectId: "projP", action: "remote.delete", destination: "https://github.com/example/projP.git", args: { branch: "old" } } }, "APPROVAL_REQUIRED");
     await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-108", projectId: "projP", action: "disclosure", args: { channel: "pastebin" } } }, "APPROVAL_REQUIRED");
     const pushArgs = { branch: "feature" };
-    const { serialized } = fx.approvals.issue({ actorUserId: "userA", projectId: "projP", agentSessionId: "sessA1", action: "git.push", args: pushArgs, destination: "https://github.com/example/projP.git", revision: "abc123", operationId: "op-109", protectedTarget: false }, fx.deps.sink);
+    const { serialized } = fx.approvals.issue({ actorUserId: "userA", projectId: "projP", agentSessionId: "sessA1", action: "git.push", args: pushArgs, resource: "", networkNeed: "", execMode: "", destination: "https://github.com/example/projP.git", revision: "abc123", operationId: "op-109", protectedTarget: false }, fx.deps.sink);
     const ok = await runIfAuthorized(fx, { token: TOKEN_A, approval: serialized, descriptor: { operationId: "op-109", projectId: "projP", agentSessionId: "sessA1", action: "git.push", destination: "https://github.com/example/projP.git", revision: "abc123", args: pushArgs } });
     assert.equal(ok.via.kind, "approval");
-    const prot = fx.approvals.issue({ actorUserId: "userA", projectId: "projP", agentSessionId: "sessA1", action: "git.push", args: { branch: "main" }, destination: "https://github.com/example/projP.git", revision: "abc123", operationId: "op-110", protectedTarget: true });
+    const prot = fx.approvals.issue({ actorUserId: "userA", projectId: "projP", agentSessionId: "sessA1", action: "git.push", args: { branch: "main" }, resource: "", networkNeed: "", execMode: "", destination: "https://github.com/example/projP.git", revision: "abc123", operationId: "op-110", protectedTarget: true });
     await expectDenial(fx, { token: TOKEN_A, approval: prot.serialized, descriptor: { operationId: "op-110", projectId: "projP", agentSessionId: "sessA1", action: "git.push", destination: "https://github.com/example/projP.git", revision: "abc123", protectedTarget: false, args: { branch: "main" } } }, "APPROVAL_MISMATCH");
     console.log("[PASS] External actions gated on exact approvals; no carried-forward auto rules.");
   }
@@ -350,6 +359,85 @@ async function main(): Promise<void> {
     assert.equal(validate("garbage-token"), null);
     assert.equal(validate(""), null);
     console.log("[PASS] PR #1 identity dependency fails closed on invalid sessions.");
+  }
+
+  console.log("--- 15. Approvals bind resource, network scope, and exec mode ---");
+  {
+    const fx = buildFixture();
+    const args = { argv: ["npm", "test"] };
+    const good = fx.approvals.issue({
+      actorUserId: "userA", projectId: "projP", agentSessionId: "sessA1", action: "exec",
+      args, resource: "src", networkNeed: "none", execMode: "argv",
+      destination: "", revision: "", operationId: "op-140", protectedTarget: false,
+    });
+    const descBase = { projectId: "projP", agentSessionId: "sessA1", action: "exec" as const, args, resource: "src", networkNeed: "none" as const, execMode: "argv" as const };
+    await expectDenial(fx, { token: TOKEN_A, approval: good.serialized, descriptor: { ...descBase, operationId: "op-140", resource: "etc" } }, "APPROVAL_MISMATCH");
+    await expectDenial(fx, { token: TOKEN_A, approval: good.serialized, descriptor: { ...descBase, operationId: "op-140", networkNeed: "loopback" as const } }, "APPROVAL_MISMATCH");
+    await expectDenial(fx, { token: TOKEN_A, approval: good.serialized, descriptor: { ...descBase, operationId: "op-140", execMode: "shell-script" as const } }, "APPROVAL_MISMATCH");
+    const scriptArgs = { script: "npm test" };
+    const script = fx.approvals.issue({
+      actorUserId: "userA", projectId: "projP", agentSessionId: "sessA1", action: "exec",
+      args: scriptArgs, resource: "src", networkNeed: "none", execMode: "shell-script",
+      destination: "", revision: "", operationId: "op-141", protectedTarget: false,
+    }, fx.deps.sink);
+    const ok = await runIfAuthorized(fx, {
+      token: TOKEN_A,
+      approval: script.serialized,
+      descriptor: { operationId: "op-141", projectId: "projP", agentSessionId: "sessA1", action: "exec", args: scriptArgs, resource: "src", networkNeed: "none", execMode: "shell-script" },
+    });
+    assert.equal(ok.via.kind, "approval");
+    console.log("[PASS] Changed resource/network/exec-mode rejected; shell-script allowed only via exact approval.");
+  }
+
+  console.log("--- 16. Issuer epoch invalidates pre-restart approvals ---");
+  {
+    const issuerA = new ApprovalIssuer(APPROVAL_SECRET, { now: clock, epoch: "aaaaaaaaaaaaaaaa" });
+    const issuerB = new ApprovalIssuer(APPROVAL_SECRET, { now: clock, epoch: "bbbbbbbbbbbbbbbb" });
+    const fx = buildFixture();
+    fx.deps.approvals = issuerA;
+    const fxRestarted = buildFixture();
+    fxRestarted.deps.approvals = issuerB;
+    const args = { argv: ["npm", "test"] };
+    const issued = issuerA.issue({
+      actorUserId: "userA", projectId: "projP", agentSessionId: "sessA1", action: "exec",
+      args, resource: "src", networkNeed: "none", execMode: "argv",
+      destination: "", revision: "", operationId: "op-150", protectedTarget: false,
+    });
+    await expectDenial(fxRestarted, {
+      token: TOKEN_A,
+      approval: issued.serialized,
+      descriptor: { operationId: "op-150", projectId: "projP", agentSessionId: "sessA1", action: "exec", args, resource: "src", networkNeed: "none", execMode: "argv" },
+    }, "APPROVAL_INVALID");
+    const ok = await runIfAuthorized(fx, {
+      token: TOKEN_A,
+      approval: issued.serialized,
+      descriptor: { operationId: "op-150", projectId: "projP", agentSessionId: "sessA1", action: "exec", args, resource: "src", networkNeed: "none", execMode: "argv" },
+    });
+    assert.equal(ok.via.kind, "approval");
+    assert.throws(() => new ApprovalIssuer(APPROVAL_SECRET, { now: clock, epoch: "not-hex" }), /epoch/);
+    console.log("[PASS] Stale-epoch approvals rejected; same-epoch approvals still honored.");
+  }
+
+  console.log("--- 17. Unavailable authorization state fails closed ---");
+  {
+    const badValidator = buildFixture();
+    badValidator.deps.validateSession = () => { throw new Error("session store down"); };
+    const e1 = await expectDenial(badValidator, { token: TOKEN_A, descriptor: { operationId: "op-160", projectId: "projP", action: "file.read" } }, "AUTHORIZATION_UNAVAILABLE");
+    assert.equal(e1.status, 503);
+    const badRegistry = buildFixture();
+    badRegistry.deps.projects = {
+      getProjectOwner: () => { throw new Error("registry down"); },
+      isAllowedPushDestination: () => true,
+    };
+    await expectDenial(badRegistry, { token: TOKEN_A, descriptor: { operationId: "op-161", projectId: "projP", action: "file.read" } }, "AUTHORIZATION_UNAVAILABLE");
+    const badSink = buildFixture();
+    badSink.deps.sink = { record: () => { throw new Error("sink down"); } };
+    await expectDenial(badSink, { token: TOKEN_A, descriptor: { operationId: "op-162", projectId: "projP", action: "file.read" } }, "AUTHORIZATION_UNAVAILABLE");
+    await expectDenial(badSink, { token: "bogus", descriptor: { operationId: "op-163", projectId: "projP", action: "file.read" } }, "AUTHORIZATION_UNAVAILABLE");
+    const missing = buildFixture();
+    const missingDeps = { ...missing, deps: { ...missing.deps, sink: undefined as unknown as AuthorizeDeps["sink"] } };
+    await expectDenial(missingDeps, { token: TOKEN_A, descriptor: { operationId: "op-164", projectId: "projP", action: "file.read" } }, "AUTHORIZATION_UNAVAILABLE");
+    console.log("[PASS] Throwing/missing dependencies deny closed (503); unaudited success never returned.");
   }
 
   console.log("=== ALL ACTION AUTHORIZATION TESTS PASSED ===");
