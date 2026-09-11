@@ -1,0 +1,175 @@
+===== npm run build (head 0d851e96718593732d5c2cd06e72657a09220211) =====
+command: NODE_OPTIONS=--max-old-space-size=1536 npm run build
+
+> coderxp@0.1.0 build
+> next build
+
+▲ Next.js 16.3.0 (Turbopack)
+✓ Running next.config.mjs took 12ms
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+This information is used to shape Next.js' roadmap and prioritize features.
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+
+  Creating an optimized production build ...
+Turbopack build encountered 5 warnings:
+[next]/internal/font/google/inter_ad991c7.module.css
+Warning: Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_ad991c7.module.css
+    [next]/internal/font/google/inter_ad991c7.js
+    ./app/layout.tsx
+
+
+[next]/internal/font/google/jetbrains_mono_f4221cb9.module.css
+Warning: Error while requesting resource
+There was an issue establishing a connection while requesting https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/jetbrains_mono_f4221cb9.module.css
+    [next]/internal/font/google/jetbrains_mono_f4221cb9.js
+    ./app/layout.tsx
+
+
+./lib/server/auth.ts:133:22
+Warning: Dynamic filesystem access causes tracing of the whole project
+  [90m131 |[0m [90m */[0m
+  [90m132 |[0m [36mfunction[0m loadCredentialState(): [33mCredentialState[0m {
+[33m[1m>[0m [90m133 |[0m   [36mconst[0m fileExists = fs.existsSync([33mAUTH_PASSWORD_FILE[0m);
+  [90m    |[0m                      [33m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m134 |[0m
+  [90m135 |[0m   [36mif[0m (fileExists) {
+  [90m136 |[0m     [36mlet[0m content: string;
+
+Static analysis determined that this filesystem access causes the whole project to be traced and included in the output.
+This is usually unintentional and leads to all source files (including the public folder) to be deployed as part of the server code.
+This can slow down deployments or lead to failures when size limits are exceeded.
+To resolve this, you can
+- make sure the path is statically scoped to some subfolder, for example path.join(process.cwd(), 'data', bar), or
+- only use them in development, or
+- opt out by adding an ignore comment to the highlighted call: fs.existsSync(/*turbopackIgnore: true*/ ...), or
+- remove them.
+
+Import trace:
+  App Route:
+    ./lib/server/auth.ts
+    ./app/api/preview/link/route.ts
+
+
+./lib/server/auth.ts:138:17
+Warning: Dynamic filesystem access causes tracing of the whole project
+  [90m136 |[0m     [36mlet[0m content: string;
+  [90m137 |[0m     [36mtry[0m {
+[33m[1m>[0m [90m138 |[0m       content = fs.readFileSync([33mAUTH_PASSWORD_FILE[0m, [32m"utf8"[0m);
+  [90m    |[0m                 [33m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m139 |[0m     } [36mcatch[0m {
+  [90m140 |[0m       [36mthrow[0m [36mnew[0m [33mError[0m(
+  [90m141 |[0m         [32m`AUTH_PASSWORD_FILE exists but is unreadable ([0m${[33mAUTH_PASSWORD_FILE[0m[32m}). Refusing to...[0m
+
+Static analysis determined that this filesystem access causes the whole project to be traced and included in the output.
+This is usually unintentional and leads to all source files (including the public folder) to be deployed as part of the server code.
+This can slow down deployments or lead to failures when size limits are exceeded.
+To resolve this, you can
+- make sure the path is statically scoped to some subfolder, for example path.join(process.cwd(), 'data', bar), or
+- only use them in development, or
+- opt out by adding an ignore comment to the highlighted call: fs.readFileSync(/*turbopackIgnore: true*/ ...), or
+- remove them.
+
+Import trace:
+  App Route:
+    ./lib/server/auth.ts
+    ./app/api/preview/link/route.ts
+
+
+./lib/server/auth.ts:381:22
+Warning: Dynamic filesystem access causes tracing of the whole project
+  [90m379 |[0m
+  [90m380 |[0m   [36mtry[0m {
+[33m[1m>[0m [90m381 |[0m     [36mconst[0m readBack = fs.readFileSync([33mAUTH_PASSWORD_FILE[0m, [32m"utf8"[0m);
+  [90m    |[0m                      [33m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m382 |[0m     [36mconst[0m parsed = parsePasswordFileContent(readBack);
+  [90m383 |[0m     [36mif[0m (
+  [90m384 |[0m       !parsed ||
+
+Static analysis determined that this filesystem access causes the whole project to be traced and included in the output.
+This is usually unintentional and leads to all source files (including the public folder) to be deployed as part of the server code.
+This can slow down deployments or lead to failures when size limits are exceeded.
+To resolve this, you can
+- make sure the path is statically scoped to some subfolder, for example path.join(process.cwd(), 'data', bar), or
+- only use them in development, or
+- opt out by adding an ignore comment to the highlighted call: fs.readFileSync(/*turbopackIgnore: true*/ ...), or
+- remove them.
+
+Import trace:
+  App Route:
+    ./lib/server/auth.ts
+    ./app/api/preview/link/route.ts
+
+
+
+> Build error occurred
+Error: Turbopack build failed with 2 errors:
+[next]/internal/font/google/inter_ad991c7.module.css
+Error: next/font: error:
+Failed to fetch Inter from Google Fonts.
+If you are offline or behind a proxy, self-host the font with next/font/local, or set HTTP_PROXY/HTTPS_PROXY so Next.js can reach fonts.googleapis.com.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_ad991c7.module.css
+    [next]/internal/font/google/inter_ad991c7.js
+    ./app/layout.tsx
+
+
+[next]/internal/font/google/jetbrains_mono_f4221cb9.module.css
+Error: next/font: error:
+Failed to fetch JetBrains Mono from Google Fonts.
+If you are offline or behind a proxy, self-host the font with next/font/local, or set HTTP_PROXY/HTTPS_PROXY so Next.js can reach fonts.googleapis.com.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/jetbrains_mono_f4221cb9.module.css
+    [next]/internal/font/google/jetbrains_mono_f4221cb9.js
+    ./app/layout.tsx
+
+
+    at ignore-listed frames
+
+===== post-build diagnostics (this isolated non-production sandbox) =====
+build exit: 1 (see classification in pr-1-verification-summary.md)
+cgroup /sys/fs/cgroup/user/memory.max: 3997061120
+cgroup /sys/fs/cgroup/user/memory.events: low 0 high 0 max 0 oom 0 oom_kill 0 oom_group_kill 0 
+MemTotal:        4034452 kB
+MemAvailable:    3672460 kB
+SwapTotal:             0 kB
+dmesg OOM lines: 0
+Google Fonts reachability: curl https://fonts.googleapis.com -> exit 35 (TLS blocked by sandbox network policy); registry.npmjs.org reachable (control OK)
+
+===== base-build comparison (base 5640a8475bded2dd785d5839b0f9a4773668435c, own npm ci --ignore-scripts install) =====
+base build exit: 1; identical 2 Google-Fonts fetch errors; 4 warnings (2 font-connection + 2 pre-existing fs-trace in lib/server/auth.ts)
+--- base build error tail ---
+Import trace:
+  Server Component:
+    [next]/internal/font/google/inter_ad991c7.module.css
+    [next]/internal/font/google/inter_ad991c7.js
+    ./app/layout.tsx
+
+
+[next]/internal/font/google/jetbrains_mono_f4221cb9.module.css
+Error: next/font: error:
+Failed to fetch JetBrains Mono from Google Fonts.
+If you are offline or behind a proxy, self-host the font with next/font/local, or set HTTP_PROXY/HTTPS_PROXY so Next.js can reach fonts.googleapis.com.
+
+Import trace:
+  Server Component:
+    [next]/internal/font/google/jetbrains_mono_f4221cb9.module.css
+    [next]/internal/font/google/jetbrains_mono_f4221cb9.js
+    ./app/layout.tsx
+
+
+    at ignore-listed frames

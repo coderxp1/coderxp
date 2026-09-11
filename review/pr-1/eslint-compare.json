@@ -1,0 +1,770 @@
+{
+ "base": "5640a8475bded2dd785d5839b0f9a4773668435c",
+ "head": "0d851e96718593732d5c2cd06e72657a09220211",
+ "toolchain": "eslint 9 / eslint-config-next 16.3.0, same node_modules (lockfile+config unchanged)",
+ "comparisonKey": "file+line+col+severity+rule+message with worktree prefixes stripped to <root>",
+ "baseDiagnosticCount": 47,
+ "headDiagnosticCount": 47,
+ "onlyInBase": [],
+ "onlyInHead": [],
+ "perFileCountDiffs": 0,
+ "diagnosticsOnChangedFiles": 0,
+ "errors": 44,
+ "warnings": 3,
+ "table": [
+  {
+   "file": "app/workspace/components/ByokProviderModal.tsx",
+   "line": 52,
+   "col": 7,
+   "severity": "error",
+   "rule": "react-hooks/set-state-in-effect",
+   "diagnostic": "Error: Calling setState synchronously within an effect can trigger cascading renders"
+  },
+  {
+   "file": "app/workspace/components/ByokProviderModal.tsx",
+   "line": 60,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/set-state-in-effect",
+   "diagnostic": "Error: Calling setState synchronously within an effect can trigger cascading renders"
+  },
+  {
+   "file": "app/workspace/components/DevboxTerminalPanel.tsx",
+   "line": 31,
+   "col": 42,
+   "severity": "error",
+   "rule": "react-hooks/purity",
+   "diagnostic": "Error: Cannot call impure function during render"
+  },
+  {
+   "file": "app/workspace/components/EditorPanel.tsx",
+   "line": 130,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/set-state-in-effect",
+   "diagnostic": "Error: Calling setState synchronously within an effect can trigger cascading renders"
+  },
+  {
+   "file": "app/workspace/components/EditorPanel.tsx",
+   "line": 155,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/set-state-in-effect",
+   "diagnostic": "Error: Calling setState synchronously within an effect can trigger cascading renders"
+  },
+  {
+   "file": "app/workspace/components/McpServerModal.tsx",
+   "line": 45,
+   "col": 9,
+   "severity": "error",
+   "rule": "react-hooks/set-state-in-effect",
+   "diagnostic": "Error: Calling setState synchronously within an effect can trigger cascading renders"
+  },
+  {
+   "file": "app/workspace/components/SidebarActionMenu.tsx",
+   "line": 41,
+   "col": 7,
+   "severity": "error",
+   "rule": "react-hooks/set-state-in-effect",
+   "diagnostic": "Error: Calling setState synchronously within an effect can trigger cascading renders"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 62,
+   "col": 3,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 64,
+   "col": 3,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 66,
+   "col": 3,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 68,
+   "col": 3,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 70,
+   "col": 3,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 77,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 77,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 77,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 77,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 77,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 77,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 77,
+   "col": 6,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 78,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 78,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 79,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 79,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 81,
+   "col": 9,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 82,
+   "col": 7,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 82,
+   "col": 7,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 84,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 85,
+   "col": 53,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 88,
+   "col": 16,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 89,
+   "col": 18,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 90,
+   "col": 22,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 91,
+   "col": 16,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 99,
+   "col": 24,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 99,
+   "col": 24,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 137,
+   "col": 31,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 137,
+   "col": 31,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 139,
+   "col": 34,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 139,
+   "col": 34,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 141,
+   "col": 38,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 141,
+   "col": 38,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 143,
+   "col": 10,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 144,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "diagnostic": "Error: Cannot access refs during render"
+  },
+  {
+   "file": "scripts/cdp-snap.mjs",
+   "line": 3,
+   "col": 28,
+   "severity": "error",
+   "rule": "(parse)",
+   "diagnostic": "Parsing error: Unexpected token, expected \",\" (3:28)"
+  },
+  {
+   "file": "scripts/record-production-walkthrough.ts",
+   "line": 6,
+   "col": 14,
+   "severity": "error",
+   "rule": "(parse)",
+   "diagnostic": "Parsing error: Expression expected."
+  },
+  {
+   "file": "server/devbox-broker-server.ts",
+   "line": 109,
+   "col": 3,
+   "severity": "warning",
+   "rule": "(parse)",
+   "diagnostic": "Unused eslint-disable directive (no problems were reported from '@typescript-eslint/no-require-imports')."
+  },
+  {
+   "file": "server/docker-control-server.ts",
+   "line": 119,
+   "col": 3,
+   "severity": "warning",
+   "rule": "(parse)",
+   "diagnostic": "Unused eslint-disable directive (no problems were reported from '@typescript-eslint/no-require-imports')."
+  },
+  {
+   "file": "server/docker-control-server.ts",
+   "line": 334,
+   "col": 11,
+   "severity": "warning",
+   "rule": "(parse)",
+   "diagnostic": "Unused eslint-disable directive (no problems were reported from '@typescript-eslint/no-require-imports')."
+  }
+ ],
+ "diagnosticsFull": [
+  {
+   "file": "app/workspace/components/ByokProviderModal.tsx",
+   "line": 52,
+   "col": 7,
+   "severity": "error",
+   "rule": "react-hooks/set-state-in-effect",
+   "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n<root>/app/workspace/components/ByokProviderModal.tsx:52:7\n  50 |   useEffect(() => {\n  51 |     if (initialProviderId) {\n> 52 |       setSelectedProvider(initialProviderId);\n     |       ^^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  53 |     }\n  54 |   }, [initialProviderId]);\n  55 |"
+  },
+  {
+   "file": "app/workspace/components/ByokProviderModal.tsx",
+   "line": 60,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/set-state-in-effect",
+   "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n<root>/app/workspace/components/ByokProviderModal.tsx:60:5\n  58 |     if (!isOpen) return;\n  59 |\n> 60 |     setValidationError(null);\n     |     ^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  61 |     setValidationSuccess(null);\n  62 |     setApiKey(\"\");\n  63 |     setShowPlainKey(false);"
+  },
+  {
+   "file": "app/workspace/components/DevboxTerminalPanel.tsx",
+   "line": 31,
+   "col": 42,
+   "severity": "error",
+   "rule": "react-hooks/purity",
+   "message": "Error: Cannot call impure function during render\n\n`Date.now` is an impure function. Calling an impure function can produce unstable results that update unpredictably when the component happens to re-render. (https://react.dev/reference/rules/components-and-hooks-must-be-pure#components-and-hooks-must-be-idempotent).\n\n<root>/app/workspace/components/DevboxTerminalPanel.tsx:31:42\n  29 |   const fitRef = useRef<FitAddon | null>(null);\n  30 |   const wsRef = useRef<WebSocket | null>(null);\n> 31 |   const lastActivityRef = useRef<number>(Date.now());\n     |                                          ^^^^^^^^^^ Cannot call impure function\n  32 |   const livenessTimerRef = useRef<NodeJS.Timeout | null>(null);\n  33 |   const resizeObserverRef = useRef<ResizeObserver | null>(null);\n  34 |"
+  },
+  {
+   "file": "app/workspace/components/EditorPanel.tsx",
+   "line": 130,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/set-state-in-effect",
+   "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n<root>/app/workspace/components/EditorPanel.tsx:130:5\n  128 |     const validPaths = new Set(files.filter((f) => f.kind === \"file\").map((f) => f.path));\n  129 |\n> 130 |     setOpenTabs((prevTabs) => {\n      |     ^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  131 |       const filtered = prevTabs.filter((p) => validPaths.has(p));\n  132 |       if (filtered.length !== prevTabs.length) {\n  133 |         persistence.persistEditorState(filtered, activeFile && validPaths.has(activeFile) ? activeFile : filtered[0] ?? null);"
+  },
+  {
+   "file": "app/workspace/components/EditorPanel.tsx",
+   "line": 155,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/set-state-in-effect",
+   "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n<root>/app/workspace/components/EditorPanel.tsx:155:5\n  153 |     if (!fileExists) return;\n  154 |\n> 155 |     setOpenTabs((prev) => {\n      |     ^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  156 |       if (!prev.includes(path)) {\n  157 |         const next = [...prev, path];\n  158 |         persistence.persistEditorState(next, path);"
+  },
+  {
+   "file": "app/workspace/components/McpServerModal.tsx",
+   "line": 45,
+   "col": 9,
+   "severity": "error",
+   "rule": "react-hooks/set-state-in-effect",
+   "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n<root>/app/workspace/components/McpServerModal.tsx:45:9\n  43 |       const raw = localStorage.getItem(\"coderxp_mcp_servers\");\n  44 |       if (raw) {\n> 45 |         setServers(JSON.parse(raw));\n     |         ^^^^^^^^^^ Avoid calling setState() directly within an effect\n  46 |       }\n  47 |     } catch {\n  48 |       setServers([]);"
+  },
+  {
+   "file": "app/workspace/components/SidebarActionMenu.tsx",
+   "line": 41,
+   "col": 7,
+   "severity": "error",
+   "rule": "react-hooks/set-state-in-effect",
+   "message": "Error: Calling setState synchronously within an effect can trigger cascading renders\n\nEffects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:\n* Update external systems with the latest state from React.\n* Subscribe for updates from some external system, calling setState in a callback function when external state changes.\n\nCalling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).\n\n<root>/app/workspace/components/SidebarActionMenu.tsx:41:7\n  39 |   useEffect(() => {\n  40 |     if (!isOpen) {\n> 41 |       setShowByokSubmenu(false);\n     |       ^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect\n  42 |       return;\n  43 |     }\n  44 |"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 62,
+   "col": 3,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:62:3\n  60 |   // Store mutable options in refs to decouple from instance identity\n  61 |   const runtimeRef = useRef(runtime);\n> 62 |   runtimeRef.current = runtime;\n     |   ^^^^^^^^^^^^^^^^^^ Cannot update ref during render\n  63 |   const transportRef = useRef(transport);\n  64 |   transportRef.current = transport;\n  65 |   const systemContextRef = useRef(systemContext);"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 64,
+   "col": 3,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:64:3\n  62 |   runtimeRef.current = runtime;\n  63 |   const transportRef = useRef(transport);\n> 64 |   transportRef.current = transport;\n     |   ^^^^^^^^^^^^^^^^^^^^ Cannot update ref during render\n  65 |   const systemContextRef = useRef(systemContext);\n  66 |   systemContextRef.current = systemContext;\n  67 |   const budgetsRef = useRef(budgets);"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 66,
+   "col": 3,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:66:3\n  64 |   transportRef.current = transport;\n  65 |   const systemContextRef = useRef(systemContext);\n> 66 |   systemContextRef.current = systemContext;\n     |   ^^^^^^^^^^^^^^^^^^^^^^^^ Cannot update ref during render\n  67 |   const budgetsRef = useRef(budgets);\n  68 |   budgetsRef.current = budgets;\n  69 |   const onEventRef = useRef(onEvent);"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 68,
+   "col": 3,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:68:3\n  66 |   systemContextRef.current = systemContext;\n  67 |   const budgetsRef = useRef(budgets);\n> 68 |   budgetsRef.current = budgets;\n     |   ^^^^^^^^^^^^^^^^^^ Cannot update ref during render\n  69 |   const onEventRef = useRef(onEvent);\n  70 |   onEventRef.current = onEvent;\n  71 |"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 70,
+   "col": 3,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:70:3\n  68 |   budgetsRef.current = budgets;\n  69 |   const onEventRef = useRef(onEvent);\n> 70 |   onEventRef.current = onEvent;\n     |   ^^^^^^^^^^^^^^^^^^ Cannot update ref during render\n  71 |\n  72 |   // Key instance strictly by projectId + generation\n  73 |   const orchestratorRef = useRef<AgentOrchestrator | null>(null);"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 77,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:77:5\n  75 |\n  76 |   if (\n> 77 |     !orchestratorRef.current ||\n     |     ^^^^^^^^^^^^^^^^^^^^^^^^ Cannot access ref value during render\n  78 |     keyRef.current?.projectId !== projectId ||\n  79 |     keyRef.current?.generation !== generation\n  80 |   ) {"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 77,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:77:5\n  75 |\n  76 |   if (\n> 77 |     !orchestratorRef.current ||\n     |     ^^^^^^^^^^^^^^^^^^^^^^^^ Cannot access ref value during render\n  78 |     keyRef.current?.projectId !== projectId ||\n  79 |     keyRef.current?.generation !== generation\n  80 |   ) {"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 77,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:77:5\n  75 |\n  76 |   if (\n> 77 |     !orchestratorRef.current ||\n     |     ^^^^^^^^^^^^^^^^^^^^^^^^ Cannot access ref value during render\n  78 |     keyRef.current?.projectId !== projectId ||\n  79 |     keyRef.current?.generation !== generation\n  80 |   ) {"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 77,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:77:5\n  75 |\n  76 |   if (\n> 77 |     !orchestratorRef.current ||\n     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n> 78 |     keyRef.current?.projectId !== projectId ||\n     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Cannot access ref value during render\n  79 |     keyRef.current?.generation !== generation\n  80 |   ) {\n  81 |     if (orchestratorRef.current) {"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 77,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:77:5\n  75 |\n  76 |   if (\n> 77 |     !orchestratorRef.current ||\n     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n> 78 |     keyRef.current?.projectId !== projectId ||\n     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Cannot access ref value during render\n  79 |     keyRef.current?.generation !== generation\n  80 |   ) {\n  81 |     if (orchestratorRef.current) {"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 77,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:77:5\n  75 |\n  76 |   if (\n> 77 |     !orchestratorRef.current ||\n     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^\n> 78 |     keyRef.current?.projectId !== projectId ||\n     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Cannot access ref value during render\n  79 |     keyRef.current?.generation !== generation\n  80 |   ) {\n  81 |     if (orchestratorRef.current) {"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 77,
+   "col": 6,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:77:6\n  75 |\n  76 |   if (\n> 77 |     !orchestratorRef.current ||\n     |      ^^^^^^^^^^^^^^^^^^^^^^^ Cannot access ref value during render\n  78 |     keyRef.current?.projectId !== projectId ||\n  79 |     keyRef.current?.generation !== generation\n  80 |   ) {\n\nTo initialize a ref only once, check that the ref is null with the pattern `if (ref.current == null) { ref.current = ... }`"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 78,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:78:5\n  76 |   if (\n  77 |     !orchestratorRef.current ||\n> 78 |     keyRef.current?.projectId !== projectId ||\n     |     ^^^^^^^^^^^^^^ Cannot access ref value during render\n  79 |     keyRef.current?.generation !== generation\n  80 |   ) {\n  81 |     if (orchestratorRef.current) {"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 78,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:78:5\n  76 |   if (\n  77 |     !orchestratorRef.current ||\n> 78 |     keyRef.current?.projectId !== projectId ||\n     |     ^^^^^^^^^^^^^^^^^^^^^^^^^ Cannot access ref value during render\n  79 |     keyRef.current?.generation !== generation\n  80 |   ) {\n  81 |     if (orchestratorRef.current) {"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 79,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:79:5\n  77 |     !orchestratorRef.current ||\n  78 |     keyRef.current?.projectId !== projectId ||\n> 79 |     keyRef.current?.generation !== generation\n     |     ^^^^^^^^^^^^^^ Cannot access ref value during render\n  80 |   ) {\n  81 |     if (orchestratorRef.current) {\n  82 |       orchestratorRef.current.dispose();"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 79,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:79:5\n  77 |     !orchestratorRef.current ||\n  78 |     keyRef.current?.projectId !== projectId ||\n> 79 |     keyRef.current?.generation !== generation\n     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^ Cannot access ref value during render\n  80 |   ) {\n  81 |     if (orchestratorRef.current) {\n  82 |       orchestratorRef.current.dispose();"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 81,
+   "col": 9,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:81:9\n  79 |     keyRef.current?.generation !== generation\n  80 |   ) {\n> 81 |     if (orchestratorRef.current) {\n     |         ^^^^^^^^^^^^^^^^^^^^^^^ Cannot access ref value during render\n  82 |       orchestratorRef.current.dispose();\n  83 |     }\n  84 |     keyRef.current = { projectId, generation };"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 82,
+   "col": 7,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:82:7\n  80 |   ) {\n  81 |     if (orchestratorRef.current) {\n> 82 |       orchestratorRef.current.dispose();\n     |       ^^^^^^^^^^^^^^^^^^^^^^^ Passing a ref to a function may read its value during render\n  83 |     }\n  84 |     keyRef.current = { projectId, generation };\n  85 |     orchestratorRef.current = new AgentOrchestrator({"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 82,
+   "col": 7,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:82:7\n  80 |   ) {\n  81 |     if (orchestratorRef.current) {\n> 82 |       orchestratorRef.current.dispose();\n     |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Passing a ref to a function may read its value during render\n  83 |     }\n  84 |     keyRef.current = { projectId, generation };\n  85 |     orchestratorRef.current = new AgentOrchestrator({"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 84,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:84:5\n  82 |       orchestratorRef.current.dispose();\n  83 |     }\n> 84 |     keyRef.current = { projectId, generation };\n     |     ^^^^^^^^^^^^^^ Cannot update ref during render\n  85 |     orchestratorRef.current = new AgentOrchestrator({\n  86 |       projectId,\n  87 |       generation,"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 85,
+   "col": 53,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:85:53\n  83 |     }\n  84 |     keyRef.current = { projectId, generation };\n> 85 |     orchestratorRef.current = new AgentOrchestrator({\n     |                                                     ^\n> 86 |       projectId,\n     | ^^^^^^^^^^^^^^^^\n> 87 |       generation,\n     …\n     | ^^^^^^^^^^^^^^^^\n> 95 |       },\n     | ^^^^^^^^^^^^^^^^\n> 96 |     });\n     | ^^^^^^ Cannot access ref value during render\n  97 |   }\n  98 |\n  99 |   const orchestrator = orchestratorRef.current;"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 88,
+   "col": 16,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:88:16\n  86 |       projectId,\n  87 |       generation,\n> 88 |       runtime: runtimeRef.current,\n     |                ^^^^^^^^^^^^^^^^^^ Cannot access ref value during render\n  89 |       transport: transportRef.current,\n  90 |       systemContext: systemContextRef.current,\n  91 |       budgets: budgetsRef.current,"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 89,
+   "col": 18,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:89:18\n  87 |       generation,\n  88 |       runtime: runtimeRef.current,\n> 89 |       transport: transportRef.current,\n     |                  ^^^^^^^^^^^^^^^^^^^^ Cannot access ref value during render\n  90 |       systemContext: systemContextRef.current,\n  91 |       budgets: budgetsRef.current,\n  92 |       onEvent: (event) => {"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 90,
+   "col": 22,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:90:22\n  88 |       runtime: runtimeRef.current,\n  89 |       transport: transportRef.current,\n> 90 |       systemContext: systemContextRef.current,\n     |                      ^^^^^^^^^^^^^^^^^^^^^^^^ Cannot access ref value during render\n  91 |       budgets: budgetsRef.current,\n  92 |       onEvent: (event) => {\n  93 |         setRevision((n) => n + 1);"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 91,
+   "col": 16,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:91:16\n  89 |       transport: transportRef.current,\n  90 |       systemContext: systemContextRef.current,\n> 91 |       budgets: budgetsRef.current,\n     |                ^^^^^^^^^^^^^^^^^^ Cannot access ref value during render\n  92 |       onEvent: (event) => {\n  93 |         setRevision((n) => n + 1);\n  94 |         onEventRef.current?.(event);"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 99,
+   "col": 24,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:99:24\n   97 |   }\n   98 |\n>  99 |   const orchestrator = orchestratorRef.current;\n      |                        ^^^^^^^^^^^^^^^^^^^^^^^ Cannot access ref value during render\n  100 |\n  101 |   // Sync latest transport and runtime references into active instance\n  102 |   useEffect(() => {"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 99,
+   "col": 24,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:99:24\n   97 |   }\n   98 |\n>  99 |   const orchestrator = orchestratorRef.current;\n      |                        ^^^^^^^^^^^^^^^^^^^^^^^ Cannot access ref value during render\n  100 |\n  101 |   // Sync latest transport and runtime references into active instance\n  102 |   useEffect(() => {"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 137,
+   "col": 31,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:137:31\n  135 |\n  136 |   // eslint-disable-next-line react-hooks/exhaustive-deps\n> 137 |   const state = useMemo(() => orchestrator.getState(), [orchestrator, revision]);\n      |                               ^^^^^^^^^^^^ Passing a ref to a function may read its value during render\n  138 |   // eslint-disable-next-line react-hooks/exhaustive-deps\n  139 |   const messages = useMemo(() => orchestrator.getMessages(), [orchestrator, revision]);\n  140 |   // eslint-disable-next-line react-hooks/exhaustive-deps"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 137,
+   "col": 31,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:137:31\n  135 |\n  136 |   // eslint-disable-next-line react-hooks/exhaustive-deps\n> 137 |   const state = useMemo(() => orchestrator.getState(), [orchestrator, revision]);\n      |                               ^^^^^^^^^^^^^^^^^^^^^ Passing a ref to a function may read its value during render\n  138 |   // eslint-disable-next-line react-hooks/exhaustive-deps\n  139 |   const messages = useMemo(() => orchestrator.getMessages(), [orchestrator, revision]);\n  140 |   // eslint-disable-next-line react-hooks/exhaustive-deps"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 139,
+   "col": 34,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:139:34\n  137 |   const state = useMemo(() => orchestrator.getState(), [orchestrator, revision]);\n  138 |   // eslint-disable-next-line react-hooks/exhaustive-deps\n> 139 |   const messages = useMemo(() => orchestrator.getMessages(), [orchestrator, revision]);\n      |                                  ^^^^^^^^^^^^ Passing a ref to a function may read its value during render\n  140 |   // eslint-disable-next-line react-hooks/exhaustive-deps\n  141 |   const currentRunId = useMemo(() => orchestrator.getRunId(), [orchestrator, revision]);\n  142 |"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 139,
+   "col": 34,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:139:34\n  137 |   const state = useMemo(() => orchestrator.getState(), [orchestrator, revision]);\n  138 |   // eslint-disable-next-line react-hooks/exhaustive-deps\n> 139 |   const messages = useMemo(() => orchestrator.getMessages(), [orchestrator, revision]);\n      |                                  ^^^^^^^^^^^^^^^^^^^^^^^^ Passing a ref to a function may read its value during render\n  140 |   // eslint-disable-next-line react-hooks/exhaustive-deps\n  141 |   const currentRunId = useMemo(() => orchestrator.getRunId(), [orchestrator, revision]);\n  142 |"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 141,
+   "col": 38,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:141:38\n  139 |   const messages = useMemo(() => orchestrator.getMessages(), [orchestrator, revision]);\n  140 |   // eslint-disable-next-line react-hooks/exhaustive-deps\n> 141 |   const currentRunId = useMemo(() => orchestrator.getRunId(), [orchestrator, revision]);\n      |                                      ^^^^^^^^^^^^ Passing a ref to a function may read its value during render\n  142 |\n  143 |   return {\n  144 |     orchestrator,"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 141,
+   "col": 38,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:141:38\n  139 |   const messages = useMemo(() => orchestrator.getMessages(), [orchestrator, revision]);\n  140 |   // eslint-disable-next-line react-hooks/exhaustive-deps\n> 141 |   const currentRunId = useMemo(() => orchestrator.getRunId(), [orchestrator, revision]);\n      |                                      ^^^^^^^^^^^^^^^^^^^^^ Passing a ref to a function may read its value during render\n  142 |\n  143 |   return {\n  144 |     orchestrator,"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 143,
+   "col": 10,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:143:10\n  141 |   const currentRunId = useMemo(() => orchestrator.getRunId(), [orchestrator, revision]);\n  142 |\n> 143 |   return {\n      |          ^\n> 144 |     orchestrator,\n      | ^^^^^^^^^^^^^^^^^\n> 145 |     state,\n      | ^^^^^^^^^^^^^^^^^\n> 146 |     messages,\n      | ^^^^^^^^^^^^^^^^^\n> 147 |     currentRunId,\n      | ^^^^^^^^^^^^^^^^^\n> 148 |     submitRun,\n      | ^^^^^^^^^^^^^^^^^\n> 149 |     cancel,\n      | ^^^^^^^^^^^^^^^^^\n> 150 |     setTransport,\n      | ^^^^^^^^^^^^^^^^^\n> 151 |   };\n      | ^^^^ Cannot access ref value during render\n  152 | }\n  153 |"
+  },
+  {
+   "file": "app/workspace/hooks/useAgentOrchestrator.ts",
+   "line": 144,
+   "col": 5,
+   "severity": "error",
+   "rule": "react-hooks/refs",
+   "message": "Error: Cannot access refs during render\n\nReact refs are values that are not needed for rendering. Refs should only be accessed outside of render, such as in event handlers or effects. Accessing a ref value (the `current` property) during render can cause your component not to update as expected (https://react.dev/reference/react/useRef).\n\n<root>/app/workspace/hooks/useAgentOrchestrator.ts:144:5\n  142 |\n  143 |   return {\n> 144 |     orchestrator,\n      |     ^^^^^^^^^^^^ Cannot access ref value during render\n  145 |     state,\n  146 |     messages,\n  147 |     currentRunId,"
+  },
+  {
+   "file": "scripts/cdp-snap.mjs",
+   "line": 3,
+   "col": 28,
+   "severity": "error",
+   "rule": "(parse)",
+   "message": "Parsing error: Unexpected token, expected \",\" (3:28)"
+  },
+  {
+   "file": "scripts/record-production-walkthrough.ts",
+   "line": 6,
+   "col": 14,
+   "severity": "error",
+   "rule": "(parse)",
+   "message": "Parsing error: Expression expected."
+  },
+  {
+   "file": "server/devbox-broker-server.ts",
+   "line": 109,
+   "col": 3,
+   "severity": "warning",
+   "rule": "(parse)",
+   "message": "Unused eslint-disable directive (no problems were reported from '@typescript-eslint/no-require-imports')."
+  },
+  {
+   "file": "server/docker-control-server.ts",
+   "line": 119,
+   "col": 3,
+   "severity": "warning",
+   "rule": "(parse)",
+   "message": "Unused eslint-disable directive (no problems were reported from '@typescript-eslint/no-require-imports')."
+  },
+  {
+   "file": "server/docker-control-server.ts",
+   "line": 334,
+   "col": 11,
+   "severity": "warning",
+   "rule": "(parse)",
+   "message": "Unused eslint-disable directive (no problems were reported from '@typescript-eslint/no-require-imports')."
+  }
+ ]
+}
