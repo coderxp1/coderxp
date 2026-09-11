@@ -1,0 +1,41 @@
+[2026-09-11T17:39:45.111Z] LIVE SMOKE START — node v22.22.3 (iteration runtime; pinned-Node-24 evidence is separate)
+[2026-09-11T17:39:45.112Z] platform=linux uid=1001 userns/netns/prlimit required by config
+[2026-09-11T17:39:45.112Z] dataDir=/tmp/rt-live-soCV2p
+[2026-09-11T17:39:45.146Z] grant g0 issued (execute+write, all sessions, no egress)
+[2026-09-11T17:39:45.163Z] [CHECK pass] allocate sessA — {"state":"running"}
+[2026-09-11T17:39:45.164Z] sessA isolation={"user":"user","netns":"no-egress","prlimit":true} shellPid=4341
+[2026-09-11T17:39:45.165Z] [CHECK pass] sessA running — shell spawned
+[2026-09-11T17:39:45.179Z] [CHECK pass] argv exec completes — {"kind":"completed","exitCode":0,"signal":null,"confirmed":true,"reconciled":false,"outputBytes":11,"outputTruncated":false,"durationMs":10}
+[2026-09-11T17:39:45.181Z] [CHECK pass] live stream carries exec output
+[2026-09-11T17:39:45.212Z] [CHECK pass] execs for isolation probes complete
+[2026-09-11T17:39:45.213Z] probe frames: {"ok":true,"frames":[{"seq":3,"ts":1789148385189,"stream":"exec-stdout","data":"0\n"},{"seq":4,"ts":1789148385190,"stream":"control","data":"op smoke-e2: completed"},{"seq":5,"ts":1789148385197,"stream":"control","data":"op smoke-e3: completed"},{"seq":6,"ts":1789148385204,"stream":"exec-stdout","data":"Max processes             256                  256                  processes \n"},{"seq":7,"ts":1789148385205,"stream":"control","data":"op smoke-e4: completed"},{"seq":8,"ts":1789148385211,"stream":"exec-stdout","data":"PATH=/usr/bin:/bin\nHOME=/tmp/rt-live-soCV2p/users/userA/projects/demo/se
+[2026-09-11T17:39:45.213Z] [CHECK pass] userns root-mapped inside (unprivileged outside)
+[2026-09-11T17:39:45.213Z] route table content: "0\n\nMax processes             256                  256                  processes \n\nPATH=/usr/bin:/bin\nHOME=/tmp/rt-live-soCV2p/users/userA/projects/demo/sessions/sessA/workspace\nLANG=C.UTF-8\nLC_ALL=C."
+[2026-09-11T17:39:45.218Z] [CHECK pass] files owned by unprivileged host uid — uid=1001
+[2026-09-11T17:39:45.218Z] [CHECK pass] no egress route inside netns — default route absent
+[2026-09-11T17:39:45.218Z] [CHECK pass] session env carries identity, no host secrets — scrubbed
+[2026-09-11T17:39:45.224Z] [CHECK pass] live token redacted from stream — marker present
+[2026-09-11T17:39:47.730Z] [CHECK pass] timeout kills with confirmation — {"kind":"timeout","exitCode":null,"signal":"SIGTERM","confirmed":true,"reconciled":false,"outputBytes":0,"outputTruncated":false,"durationMs":2504}
+[2026-09-11T17:39:48.239Z] [CHECK pass] no descendant sleep survives — pgrep=""
+[2026-09-11T17:39:49.042Z] [CHECK pass] cancel accepted
+[2026-09-11T17:39:49.042Z] [CHECK pass] cancelled outcome — {"kind":"cancelled","exitCode":null,"signal":"SIGTERM","confirmed":true,"reconciled":false,"outputBytes":0,"outputTruncated":false,"durationMs":802}
+[2026-09-11T17:39:49.049Z] [CHECK pass] replay reconciled without rerun — lines=1
+[2026-09-11T17:39:49.050Z] [CHECK pass] leased input accepted
+[2026-09-11T17:39:49.202Z] [CHECK pass] typed command output streams
+[2026-09-11T17:39:49.203Z] [CHECK pass] wrong lease rejected
+[2026-09-11T17:39:49.203Z] [CHECK pass] shell-script via grant refused
+[2026-09-11T17:39:49.210Z] [CHECK pass] shell-script via exact approval runs
+[2026-09-11T17:39:49.215Z] [CHECK pass] allocate sessB
+[2026-09-11T17:39:49.221Z] [CHECK pass] sessA cannot see sessB files
+[2026-09-11T17:39:49.222Z] [CHECK pass] workspace escape refused — MALFORMED_REQUEST
+[2026-09-11T17:39:49.222Z] [CHECK pass] userB denied on userA session
+[2026-09-11T17:39:49.222Z] killing sessA shell pid 4341 (simulated supervisor loss)
+[2026-09-11T17:39:50.424Z] [CHECK pass] killed session reports dead (not running) — shell exited
+[2026-09-11T17:39:50.425Z] [CHECK pass] exec on dead session refused — RUNTIME_UNAVAILABLE
+[2026-09-11T17:39:50.426Z] [CHECK pass] persisted workspaces listed after replacement — ["sessA:2","sessB:1"]
+[2026-09-11T17:39:50.426Z] [CHECK pass] sessA file content survives replacement
+[2026-09-11T17:39:50.433Z] [CHECK pass] replacement runtime reports old session unknown
+[2026-09-11T17:39:50.433Z] [CHECK pass] project ownership survives replacement
+[2026-09-11T17:39:50.439Z] [CHECK pass] new session allocatable after replacement
+[2026-09-11T17:39:54.643Z] [CHECK pass] sessB stopped — session stopped; shell group verified dead
+[2026-09-11T17:39:58.850Z] LIVE SMOKE END — pass=32 fail=0

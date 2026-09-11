@@ -1,0 +1,1891 @@
+From 6ba588e1096ed6696276894c91fd79a323e52ffb Mon Sep 17 00:00:00 2001
+From: coderxp1 <327264955+coderxp1@users.noreply.github.com>
+Date: Fri, 11 Sep 2026 16:37:37 +0000
+Subject: [PATCH] DRAFT: authorization slice boundary plus shell contract
+ proposal
+
+Server-enforced project/action boundary (authorize() single entry point),
+single-use HMAC-bound approvals, bounded reviewable session grants, and a
+14-section deterministic regression suite. Adds a per-agent shell/session
+contract proposal doc for the later core-feature gate.
+
+Isolated draft for a separate review gate; depends on PR #1
+(authentication) for verified identity. No authentication, runtime, or
+deployment behavior is modified by this commit.
+
+Co-authored-by: arena-agent <297053741+arena-agent@users.noreply.github.com>
+---
+ docs/agent-shell-session-contract-draft.md |  91 ++++++
+ docs/authorization-slice-draft.md          |  92 ++++++
+ lib/server/authorization/approvals.ts      | 305 +++++++++++++++++
+ lib/server/authorization/enforce.ts        | 233 +++++++++++++
+ lib/server/authorization/grants.ts         | 181 +++++++++++
+ lib/server/authorization/policy.ts         | 230 +++++++++++++
+ lib/server/authorization/types.ts          | 174 ++++++++++
+ lib/server/authorization/util.ts           | 130 ++++++++
+ scripts/test-action-authorization.ts       | 361 +++++++++++++++++++++
+ 9 files changed, 1797 insertions(+)
+ create mode 100644 docs/agent-shell-session-contract-draft.md
+ create mode 100644 docs/authorization-slice-draft.md
+ create mode 100644 lib/server/authorization/approvals.ts
+ create mode 100644 lib/server/authorization/enforce.ts
+ create mode 100644 lib/server/authorization/grants.ts
+ create mode 100644 lib/server/authorization/policy.ts
+ create mode 100644 lib/server/authorization/types.ts
+ create mode 100644 lib/server/authorization/util.ts
+ create mode 100644 scripts/test-action-authorization.ts
+
+diff --git a/docs/agent-shell-session-contract-draft.md b/docs/agent-shell-session-contract-draft.md
+new file mode 100644
+index 0000000..55de36d
+--- /dev/null
++++ b/docs/agent-shell-session-contract-draft.md
+@@ -0,0 +1,91 @@
++# Per-agent shell/session contract — proposal (later review gate)
++
++Status: **PROPOSAL**. Implementation belongs to the core feature slice
++("each agent's own real shell and live terminal"), a separate review gate
++after the authorization slice. This document proposes the contract so the
++authorization slice can reserve the right enforcement points now.
++
++## Session contract (proposed)
++
++- **One dedicated shell session per active agent/task**, allocated through
++  `runtime.allocate` + `exec` authorization. The session is scoped to
++  (owner, project, agentSessionId); working directory and session state
++  persist across tool calls while alive. No silent sharing of shell state,
++  stdin, credentials, or process control between agents.
++- **Identity and lifecycle:** server-assigned session ID; states
++  `starting → running → succeeded | failed | cancelled | unknown /
++  reconciling`. Loss of contact yields `unknown/reconciling`, never a
++  fabricated terminal state. Exit status comes from the runtime
++  supervisor/process state — never model text, prompts, or output markers.
++  Interactive input without trustworthy per-command completion is labeled
++  as such; no exit code is invented.
++- **Execution shape:** structured execution preserves executable/argument
++  boundaries (no shell-string interpolation of arguments). Intentional
++  shell scripts are an explicit `shell-script` capability flag on the
++  request, gated by authorization — never an implicit fallback.
++- **Timeouts and cancellation** apply to the workload process group
++  including descendants; "stopped" is reported only when the supervisor
++  confirms termination. Interrupted/uncertain operations reconcile before
++  retry; reconnect never silently reruns commands (new session only via
++  the defined allocation flow; dead sessions are reported as dead).
++- **Runtime honesty:** isolated remote Linux runtime for full shell
++  workflows; WebContainer retained behind the runtime interface only for
++  supported browser applications, labeled with real capabilities and
++  missing prerequisites. Missing runtime fails as unavailable — never as
++  success, never via a fake-provider fallback in production.
++
++## Watching and controlling the terminal (proposed UX)
++
++- Each agent gets a clearly labeled, live PTY-backed terminal panel showing
++  session identity, connection state, running processes, and command
++  activity. Output streams as it happens (server-assigned sequence
++  numbers, reconnect cursors, bounded buffers, explicit truncation/gap
++  notices, backpressure) — not only after completion.
++- The user may observe at any time and explicitly take input control
++  through a visible control lease (agent input paused while the user
++  holds the lease; lease expiry/return is explicit). No concurrent
++  human/agent stdin races. A separate user terminal, where provided,
++  stays visually and functionally distinct from agent terminals.
++- Input, resize, interrupt (SIGINT), stop, and reconnect are first-class
++  controls. Reconnect replays from the cursor without duplicating
++  commands.
++- Terminal output is untrusted: no HTML execution, no automatic permission
++  changes, links not followed blindly. Secrets are redacted (including
++  across chunk boundaries) before output reaches logs, storage, the
++  model, or the browser. PTY output is labeled combined unless stdout/
++  stderr are genuinely captured separately.
++
++## Isolation and stream safety (non-negotiable for the slice)
++
++Non-root execution identity, resource limits, filesystem/process/network
++isolation per hosting model. No Docker socket, control-plane filesystem,
++host shell, metadata services, sibling-agent volumes, or broad provider
++credentials in the agent environment. Raw shell access must not bypass
++push/deployment approvals: scoped egress plus brokered credentials and
++brokered external operations — never broad Git/cloud/SSH credentials in
++the ordinary agent environment and never a promise that the model will
++avoid a command.
++
++## Authorization touchpoints (reserved now)
++
++`runtime.allocate`, `exec` (+ `networkNeed`), `terminal.attach/input/
++resize/interrupt`, `logs.read`, `preview.*`, `agent.stop/restore`,
++`file.*`, `git.*`, `deploy`, `credential.use`, `spend` — all defined in
++`lib/server/authorization/types.ts` so this contract maps 1:1 onto
++enforcement later.
++
++## Reuse candidates (to be audited against the contract, not blindly reused)
++
++`node-pty` dependency, `lib/server/devbox-broker.ts`,
++`lib/server/devbox-token.ts` (PR #1), `lib/workspace/terminal.ts`,
++`lib/workspace/agent-process-stream.ts`, `app/workspace/components/
++TerminalPanel.tsx` and `DevboxTerminalPanel.tsx`,
++`lib/server/devbox-event-store.ts`, `lib/workspace/secret-redaction.ts`.
++
++## Acceptance evidence plan (later gate)
++
++Two agents with provably separate shells; live output during long runs;
++working input/resize; descendant-killing cancellation; duplicate-free
++reconnect; honest missing-runtime failure; file survival across session
++replacement — demonstrated with real integration evidence in an approved
++disposable environment. Test-only fakes stay in unit tests.
+diff --git a/docs/authorization-slice-draft.md b/docs/authorization-slice-draft.md
+new file mode 100644
+index 0000000..ed19fbe
+--- /dev/null
++++ b/docs/authorization-slice-draft.md
+@@ -0,0 +1,92 @@
++# Authorization slice — draft record (not a merge candidate)
++
++Status: **DRAFT** on the review branch. This slice gets its own reviewable PR
++after PR #1 (authentication) merges. Nothing in this draft modifies
++authentication behavior, runtime code, or deployment code.
++
++## Dependency on PR #1
++
++Identity input is the PR #1 verified session (`verifySessionToken` via
++`createDefaultSessionValidator` in `lib/server/authorization/enforce.ts`).
++Password-change generation invalidation and fail-closed secret configuration
++are inherited from PR #1. If PR #1's implementation SHA changes before merge,
++this draft's dependency statement and any affected checks must be refreshed.
++
++## What exists in this draft (additive only)
++
++| Path | Purpose |
++|---|---|
++| `lib/server/authorization/types.ts` | Contract types: actions, descriptors, grants, approvals, denials, audit events |
++| `lib/server/authorization/util.ts` | Stable arg hashing, constant-time compare, path/destination validation |
++| `lib/server/authorization/policy.ts` | Project access, session home project, destination allowlist, credential need |
++| `lib/server/authorization/approvals.ts` | Single-use HMAC-bound approvals with atomic consume + replay rejection |
++| `lib/server/authorization/grants.ts` | Bounded, reviewable, revocable session grants (never `external`) |
++| `lib/server/authorization/enforce.ts` | `authorize()` — the single server-enforced entry point |
++| `scripts/test-action-authorization.ts` | Deterministic boundary regression (14 sections, fixed fixtures, manual clock) |
++
++`package.json` is intentionally untouched: wiring the new test into
++`npm test` happens in the slice PR, keeping this draft purely additive.
++
++## Reuse vs supersede inventory
++
++**Reused (imported, not modified):**
++
++- PR #1 `verifySessionToken` — verified identity input.
++- `lib/server/devbox-event-store.ts` (`hostEventStore`) — production audit sink.
++- `lib/devbox/event-types.ts` — tier vocabulary for audit mapping.
++- `lib/workspace/agent-permissions.ts` / `agent-permissions-gate.ts`
++  (`gateAndInvoke`) — orchestrator-side seam stays as the UX layer; the
++  server boundary is authoritative and never trusts client decisions.
++- `lib/workspace/secret-redaction.ts` — still the redaction utility for
++  audit-adjacent content (this draft stores arg hashes only).
++
++**Explicitly superseded as a security boundary (modules untouched):**
++
++- `lib/devbox/action-policy.ts` command-substring tiering (e.g. command
++  names containing "test" scoring T0) is **not** carried forward. This
++  draft treats package scripts, tests, interpreters, and free-form shell
++  input as arbitrary code; `exec` always needs a scoped grant or explicit
++  approval. Regression section 10 pins this.
++- `lib/server/devbox-credential-gate.ts` branch-only grants (no actor,
++  expiry, replay, or operation binding) are replaced by the new approvals
++  and grants. The old gate stays in place until the slice PR migrates its
++  callers — no silent behavior swap here.
++- No automatic-push / automatic-preview rule is carried forward. Push,
++  remote deletion, disclosure, deployment, credential use, and spending
++  each require their own approval decision (regression section 11).
++
++## Contract summary
++
++- Actor comes from the verified session; project access from the server
++  registry (pilot: explicitly registered single-account projects —
++  multi-user membership is **not** claimed).
++- Reads on owned projects: allowed by policy. Write/execute/preview: scoped
++  grant or explicit approval. External: explicit approval only.
++- Approvals bind actor, project, session, exact action, argument hash,
++  destination, revision, protected-target flag, operation ID, and expiry;
++  single-use with atomic consume; forged/expired/revoked/replayed/altered
++  presentations fail with typed denials.
++- Grants are bounded (categories excluding external, resource prefixes,
++  loopback-or-less egress, TTL caps with shorter caps for broad scope),
++  reviewable via `listActive`, and revocable.
++- Denial performs no runtime, storage, credential, or network side effects:
++  providers are invoked only with an `AuthorizationSuccess` in hand
++  (pinned by call-count assertions in every denial test).
++
++## Integration points (later work inside this slice's gate)
++
++API routes, tool dispatcher, runtime broker, storage adapters, terminal
++attachment, preview router/access, and external-provider adapters must call
++`authorize()` before acting. Route/request plumbing, durable credential
++storage, and cross-process replay protection are follow-ups; the draft uses
++in-process registries and documents that horizon honestly.
++
++## Test map
++
++`scripts/test-action-authorization.ts` sections 1–14 cover: unauthenticated
++denial; policy reads + project boundary; credential requirement + malformed
++input; grant happy path; four grant-scope axes; grant lifecycle +
++reviewability; issuance bounds; approval single-use + replay; forged/
++altered/expired/revoked approvals; exec-as-arbitrary-code; external-action
++gating + destination allowlist; terminal/preview ownership; redacted audit
++trail; fail-closed default validator.
+diff --git a/lib/server/authorization/approvals.ts b/lib/server/authorization/approvals.ts
+new file mode 100644
+index 0000000..1969087
+--- /dev/null
++++ b/lib/server/authorization/approvals.ts
+@@ -0,0 +1,305 @@
++/**
++ * Authorization slice (DRAFT) — single-use HMAC-bound approvals.
++ *
++ * An approval binds actor, project, agent session, exact action, argument
++ * hash, destination, revision, protected-target flag, operation ID, and
++ * expiry under an HMAC signature. It is consumed atomically on first valid
++ * presentation; any second presentation is a replay rejection. Verification
++ * performs no runtime, storage, credential, or network side effects.
++ *
++ * In-process replay/revocation sets are the draft boundary; durable storage
++ * across restarts and processes is a documented follow-up. Approvals never
++ * authorize a different operation, session, or argument set.
++ */
++
++import crypto from "node:crypto";
++import {
++  ActionKind,
++  ApprovalToken,
++  AuditSink,
++  AuthorizationError,
++} from "./types";
++import { argsHashFor, timingSafeEqualHex, validateId } from "./util";
++import { ACTION_CATEGORY } from "./policy";
++
++export interface ApprovalIssuerOptions {
++  now?: () => number;
++  defaultTtlMs?: number;
++  maxTtlMs?: number;
++}
++
++export interface ApprovalIssueParams {
++  actorUserId: string;
++  projectId: string;
++  /** Empty string when the operation has no agent session. */
++  agentSessionId: string;
++  action: ActionKind;
++  /** Validated arguments; bound by hash. */
++  args: unknown;
++  destination: string;
++  revision: string;
++  operationId: string;
++  protectedTarget: boolean;
++  ttlMs?: number;
++}
++
++export interface ApprovalBinding {
++  actorUserId: string;
++  projectId: string;
++  agentSessionId: string;
++  action: ActionKind;
++  argsHash: string;
++  destination: string;
++  revision: string;
++  operationId: string;
++  protectedTarget: boolean;
++}
++
++interface ApprovalPayload {
++  v: 1;
++  id: string;
++  actorUserId: string;
++  projectId: string;
++  agentSessionId: string;
++  action: ActionKind;
++  argsHash: string;
++  destination: string;
++  revision: string;
++  operationId: string;
++  protectedTarget: boolean;
++  expiresAt: number;
++}
++
++function canonicalPayloadJson(p: ApprovalPayload): string {
++  return JSON.stringify({
++    v: p.v,
++    id: p.id,
++    actorUserId: p.actorUserId,
++    projectId: p.projectId,
++    agentSessionId: p.agentSessionId,
++    action: p.action,
++    argsHash: p.argsHash,
++    destination: p.destination,
++    revision: p.revision,
++    operationId: p.operationId,
++    protectedTarget: p.protectedTarget,
++    expiresAt: p.expiresAt,
++  });
++}
++
++function isHex(value: string, bytes: number): boolean {
++  return new RegExp(`^[0-9a-f]{${bytes * 2}}$`).test(value);
++}
++
++export class ApprovalIssuer {
++  private readonly secret: string;
++  private readonly now: () => number;
++  private readonly defaultTtlMs: number;
++  private readonly maxTtlMs: number;
++  private readonly consumed = new Set<string>();
++  private readonly revoked = new Set<string>();
++
++  constructor(secret: string, options?: ApprovalIssuerOptions) {
++    if (!secret || secret.length < 32) {
++      throw new Error("Approval issuer requires an explicit secret of at least 32 characters (fail closed).");
++    }
++    this.secret = secret;
++    this.now = options?.now ?? Date.now;
++    this.defaultTtlMs = options?.defaultTtlMs ?? 10 * 60 * 1000;
++    this.maxTtlMs = options?.maxTtlMs ?? 60 * 60 * 1000;
++  }
++
++  issue(params: ApprovalIssueParams, sink?: AuditSink): { token: ApprovalToken; serialized: string } {
++    validateId(params.actorUserId, "actorUserId", params.operationId);
++    validateId(params.projectId, "projectId", params.operationId);
++    if (params.agentSessionId !== "") validateId(params.agentSessionId, "agentSessionId", params.operationId);
++    if (!ACTION_CATEGORY[params.action]) {
++      throw new AuthorizationError("UNKNOWN_ACTION", "approval action is unknown.", 403, params.operationId);
++    }
++    validateId(params.operationId, "operationId");
++    if (typeof params.protectedTarget !== "boolean" || typeof params.destination !== "string" || typeof params.revision !== "string") {
++      throw new AuthorizationError("MALFORMED_REQUEST", "approval bindings are malformed.", 400, params.operationId);
++    }
++    const ttlMs = params.ttlMs ?? this.defaultTtlMs;
++    if (!Number.isInteger(ttlMs) || ttlMs < 1000 || ttlMs > this.maxTtlMs) {
++      throw new AuthorizationError("MALFORMED_REQUEST", "approval ttlMs is out of bounds.", 400, params.operationId);
++    }
++    const payload: ApprovalPayload = {
++      v: 1,
++      id: crypto.randomBytes(8).toString("hex"),
++      actorUserId: params.actorUserId,
++      projectId: params.projectId,
++      agentSessionId: params.agentSessionId,
++      action: params.action,
++      argsHash: argsHashFor(params.args),
++      destination: params.destination,
++      revision: params.revision,
++      operationId: params.operationId,
++      protectedTarget: params.protectedTarget,
++      expiresAt: this.now() + ttlMs,
++    };
++    const payloadJson = canonicalPayloadJson(payload);
++    const sig = crypto.createHmac("sha256", this.secret).update(payloadJson, "utf8").digest("hex");
++    const token: ApprovalToken = { ...payload, sig };
++    sink?.record({
++      ts: this.now(),
++      actorUserId: payload.actorUserId,
++      projectId: payload.projectId,
++      ...(payload.agentSessionId !== "" ? { agentSessionId: payload.agentSessionId } : {}),
++      operationId: payload.operationId,
++      action: payload.action,
++      outcome: "approval-issued",
++      via: payload.id,
++      argsHash: payload.argsHash,
++    });
++    return { token, serialized: `${Buffer.from(payloadJson, "utf8").toString("base64url")}.${sig}` };
++  }
++
++  parse(serialized: unknown): { token: ApprovalToken; payloadJson: string } {
++    if (typeof serialized !== "string") {
++      throw new AuthorizationError("APPROVAL_INVALID", "Approval is malformed.", 403);
++    }
++    const dot = serialized.indexOf(".");
++    if (dot <= 0) {
++      throw new AuthorizationError("APPROVAL_INVALID", "Approval is malformed.", 403);
++    }
++    const payloadJson = Buffer.from(serialized.slice(0, dot), "base64url").toString("utf8");
++    const sig = serialized.slice(dot + 1);
++    let raw: Record<string, unknown>;
++    try {
++      const parsed: unknown = JSON.parse(payloadJson);
++      if (typeof parsed !== "object" || parsed === null) throw new Error("not an object");
++      raw = parsed as Record<string, unknown>;
++    } catch {
++      throw new AuthorizationError("APPROVAL_INVALID", "Approval payload is malformed.", 403);
++    }
++    if (
++      raw.v !== 1 ||
++      typeof raw.id !== "string" ||
++      !isHex(raw.id, 8) ||
++      typeof raw.actorUserId !== "string" ||
++      typeof raw.projectId !== "string" ||
++      typeof raw.agentSessionId !== "string" ||
++      typeof raw.action !== "string" ||
++      !ACTION_CATEGORY[raw.action as ActionKind] ||
++      typeof raw.argsHash !== "string" ||
++      !isHex(raw.argsHash, 32) ||
++      typeof raw.destination !== "string" ||
++      typeof raw.revision !== "string" ||
++      typeof raw.operationId !== "string" ||
++      typeof raw.protectedTarget !== "boolean" ||
++      typeof raw.expiresAt !== "number" ||
++      !Number.isInteger(raw.expiresAt) ||
++      !isHex(sig, 32)
++    ) {
++      throw new AuthorizationError("APPROVAL_INVALID", "Approval fields are malformed.", 403);
++    }
++    const token: ApprovalToken = {
++      v: 1,
++      id: raw.id,
++      actorUserId: raw.actorUserId,
++      projectId: raw.projectId,
++      agentSessionId: raw.agentSessionId,
++      action: raw.action as ActionKind,
++      argsHash: raw.argsHash,
++      destination: raw.destination,
++      revision: raw.revision,
++      operationId: raw.operationId,
++      protectedTarget: raw.protectedTarget,
++      expiresAt: raw.expiresAt,
++      sig,
++    };
++    return { token, payloadJson };
++  }
++
++  /**
++   * Verification order: signature → revocation → expiry → bindings → replay.
++   * Returns the token ID on success (consumed atomically).
++   */
++  verifyAndConsume(input: string | ApprovalToken, expected: ApprovalBinding, sink?: AuditSink): string {
++    let token: ApprovalToken;
++    let payloadJson: string;
++    if (typeof input === "string") {
++      const parsed = this.parse(input);
++      token = parsed.token;
++      payloadJson = parsed.payloadJson;
++    } else {
++      token = input;
++      payloadJson = canonicalPayloadJson({
++        v: token.v,
++        id: token.id,
++        actorUserId: token.actorUserId,
++        projectId: token.projectId,
++        agentSessionId: token.agentSessionId,
++        action: token.action,
++        argsHash: token.argsHash,
++        destination: token.destination,
++        revision: token.revision,
++        operationId: token.operationId,
++        protectedTarget: token.protectedTarget,
++        expiresAt: token.expiresAt,
++      });
++    }
++    const expectedSig = crypto.createHmac("sha256", this.secret).update(payloadJson, "utf8").digest("hex");
++    if (!timingSafeEqualHex(token.sig, expectedSig)) {
++      throw new AuthorizationError("APPROVAL_INVALID", "Approval signature is invalid.", 403, expected.operationId);
++    }
++    if (this.revoked.has(token.id)) {
++      throw new AuthorizationError("APPROVAL_REVOKED", "Approval was revoked.", 403, expected.operationId);
++    }
++    if (this.now() >= token.expiresAt) {
++      throw new AuthorizationError("APPROVAL_EXPIRED", "Approval has expired.", 403, expected.operationId);
++    }
++    const matches =
++      token.actorUserId === expected.actorUserId &&
++      token.projectId === expected.projectId &&
++      token.agentSessionId === expected.agentSessionId &&
++      token.action === expected.action &&
++      token.argsHash === expected.argsHash &&
++      token.destination === expected.destination &&
++      token.revision === expected.revision &&
++      token.operationId === expected.operationId &&
++      token.protectedTarget === expected.protectedTarget;
++    if (!matches) {
++      throw new AuthorizationError(
++        "APPROVAL_MISMATCH",
++        "Approval does not match this actor, session, action, arguments, destination, revision, or operation.",
++        403,
++        expected.operationId,
++      );
++    }
++    if (this.consumed.has(token.id)) {
++      throw new AuthorizationError("APPROVAL_REPLAYED", "Approval was already consumed.", 403, expected.operationId);
++    }
++    this.consumed.add(token.id);
++    sink?.record({
++      ts: this.now(),
++      actorUserId: token.actorUserId,
++      projectId: token.projectId,
++      ...(token.agentSessionId !== "" ? { agentSessionId: token.agentSessionId } : {}),
++      operationId: token.operationId,
++      action: token.action,
++      outcome: "approval-consumed",
++      via: token.id,
++      argsHash: token.argsHash,
++    });
++    return token.id;
++  }
++
++  revoke(tokenId: string, byOperationId: string, sink?: AuditSink): void {
++    validateId(byOperationId, "operationId");
++    if (!isHex(tokenId, 8)) {
++      throw new AuthorizationError("APPROVAL_INVALID", "Approval id is malformed.", 403, byOperationId);
++    }
++    this.revoked.add(tokenId);
++    sink?.record({
++      ts: this.now(),
++      actorUserId: null,
++      projectId: "",
++      operationId: byOperationId,
++      action: "approval.revoke",
++      outcome: "approval-revoked",
++      via: tokenId,
++    });
++  }
++}
+diff --git a/lib/server/authorization/enforce.ts b/lib/server/authorization/enforce.ts
+new file mode 100644
+index 0000000..b56ff48
+--- /dev/null
++++ b/lib/server/authorization/enforce.ts
+@@ -0,0 +1,233 @@
++/**
++ * Authorization slice (DRAFT) — the single server-enforced entry point.
++ *
++ * `authorize` is the only function that turns a session token plus an
++ * operation descriptor into permission to act. Providers, brokers, storage,
++ * terminal attachment, previews, and external adapters must only be invoked
++ * with an AuthorizationSuccess in hand. Every denial path throws a typed
++ * AuthorizationError and performs no runtime, storage, credential, or
++ * network side effects (callers authorize BEFORE touching providers).
++ *
++ * Dependency on PR #1: the default session validator uses
++ * `verifySessionToken` from lib/server/auth, so password-change generation
++ * invalidation and fail-closed secret configuration are inherited. Tests
++ * inject a fake validator and never touch real auth state.
++ */
++
++import { verifySessionToken } from "../auth";
++import { hostEventStore } from "../devbox-event-store";
++import { ApprovalIssuer } from "./approvals";
++import { GrantStore } from "./grants";
++import {
++  ApprovalToken,
++  AuditSink,
++  AuthorizationError,
++  AuthorizationSuccess,
++  OperationDescriptor,
++} from "./types";
++import { evaluatePolicy, ProjectRegistry, SessionRegistry, validateDescriptor } from "./policy";
++import { argsHashFor } from "./util";
++
++export type SessionValidator = (token: string) => { userId: string } | null;
++
++export function createDefaultSessionValidator(): SessionValidator {
++  return (token: string) => {
++    if (!token || typeof token !== "string") return null;
++    const result = verifySessionToken(token);
++    if (!result.valid || !result.payload) return null;
++    return { userId: result.payload.userId };
++  };
++}
++
++/** Production audit sink: authorization decisions as host events (no raw args). */
++export function createEventStoreAuditSink(): AuditSink {
++  return {
++    record(event) {
++      const tier =
++        event.outcome === "denied"
++          ? event.action === "git.push" ||
++            event.action === "deploy" ||
++            event.action === "spend" ||
++            event.action === "credential.use"
++            ? "T3"
++            : "T2"
++          : event.outcome === "allowed" && event.via === "policy"
++            ? "T0"
++            : "T2";
++      // NOTE (draft): the ProjectEventType union has no authz-specific member and
++      // this draft does not modify shared contracts. Decisions map onto
++      // "approval.decided" with the outcome in data; a dedicated event type is
++      // follow-up work inside the authorization slice's own review gate.
++      hostEventStore.recordEvent({
++        projectId: event.projectId,
++        tier,
++        type: "approval.decided",
++        data: {
++          actorUserId: event.actorUserId,
++          agentSessionId: event.agentSessionId ?? "",
++          operationId: event.operationId,
++          action: event.action,
++          outcome: event.outcome,
++          via: event.via ?? "",
++          reason: event.reason ?? "",
++          argsHash: event.argsHash ?? "",
++        },
++      });
++    },
++  };
++}
++
++export interface AuthorizeDeps {
++  validateSession: SessionValidator;
++  projects: ProjectRegistry;
++  sessions: SessionRegistry;
++  approvals: ApprovalIssuer;
++  grants: GrantStore;
++  sink: AuditSink;
++}
++
++export interface AuthorizeInput {
++  token: unknown;
++  descriptor: unknown;
++  grantId?: unknown;
++  approval?: string | ApprovalToken;
++}
++
++export function authorize(deps: AuthorizeDeps, input: AuthorizeInput): AuthorizationSuccess {
++  try {
++    if (typeof input.token !== "string" || input.token === "") {
++      throw new AuthorizationError("NOT_AUTHENTICATED", "Authentication required.", 401);
++    }
++    const session = deps.validateSession(input.token);
++    if (!session) {
++      throw new AuthorizationError("NOT_AUTHENTICATED", "Invalid or expired session.", 401);
++    }
++    const descriptor: OperationDescriptor = validateDescriptor(input.descriptor);
++    const principal = { userId: session.userId };
++    const { needs } = evaluatePolicy(descriptor, principal, deps.projects, deps.sessions);
++
++    if (needs === "none") {
++      deps.sink.record({
++        ts: Date.now(),
++        actorUserId: principal.userId,
++        projectId: descriptor.projectId,
++        ...(descriptor.agentSessionId !== undefined ? { agentSessionId: descriptor.agentSessionId } : {}),
++        operationId: descriptor.operationId,
++        action: descriptor.action,
++        outcome: "allowed",
++        via: "policy",
++        argsHash: argsHashFor(descriptor.args),
++      });
++      return {
++        principal,
++        projectId: descriptor.projectId,
++        ...(descriptor.agentSessionId !== undefined ? { agentSessionId: descriptor.agentSessionId } : {}),
++        operationId: descriptor.operationId,
++        action: descriptor.action,
++        via: { kind: "policy" },
++      };
++    }
++
++    if (input.approval !== undefined) {
++      const credentialId = deps.approvals.verifyAndConsume(
++        input.approval,
++        {
++          actorUserId: principal.userId,
++          projectId: descriptor.projectId,
++          agentSessionId: descriptor.agentSessionId ?? "",
++          action: descriptor.action,
++          argsHash: argsHashFor(descriptor.args),
++          destination: descriptor.destination ?? "",
++          revision: descriptor.revision ?? "",
++          operationId: descriptor.operationId,
++          protectedTarget: descriptor.protectedTarget ?? false,
++        },
++        deps.sink,
++      );
++      deps.sink.record({
++        ts: Date.now(),
++        actorUserId: principal.userId,
++        projectId: descriptor.projectId,
++        ...(descriptor.agentSessionId !== undefined ? { agentSessionId: descriptor.agentSessionId } : {}),
++        operationId: descriptor.operationId,
++        action: descriptor.action,
++        outcome: "allowed",
++        via: `approval:${credentialId}`,
++        argsHash: argsHashFor(descriptor.args),
++      });
++      return {
++        principal,
++        projectId: descriptor.projectId,
++        ...(descriptor.agentSessionId !== undefined ? { agentSessionId: descriptor.agentSessionId } : {}),
++        operationId: descriptor.operationId,
++        action: descriptor.action,
++        via: { kind: "approval", credentialId },
++      };
++    }
++
++    if (needs === "explicit-approval") {
++      throw new AuthorizationError(
++        "APPROVAL_REQUIRED",
++        "This action requires its own explicit approval; grants cannot satisfy it.",
++        403,
++        descriptor.operationId,
++      );
++    }
++
++    if (typeof input.grantId !== "string" || input.grantId === "") {
++      throw new AuthorizationError(
++        "APPROVAL_REQUIRED",
++        "This action requires a scoped grant or an explicit approval.",
++        403,
++        descriptor.operationId,
++      );
++    }
++    const grant = deps.grants.get(input.grantId);
++    if (!grant) {
++      throw new AuthorizationError("GRANT_NOT_FOUND", "Grant does not exist.", 403, descriptor.operationId);
++    }
++    const check = deps.grants.check(grant, descriptor, principal.userId);
++    if (!check.ok) {
++      const messages: Record<string, string> = {
++        GRANT_EXPIRED: "Grant has expired.",
++        GRANT_REVOKED: "Grant was revoked.",
++        GRANT_OUT_OF_SCOPE: "Grant does not cover this actor, session, action, resource, or network scope.",
++      };
++      throw new AuthorizationError(check.code, messages[check.code] ?? "Grant cannot satisfy this action.", 403, descriptor.operationId);
++    }
++    deps.sink.record({
++      ts: Date.now(),
++      actorUserId: principal.userId,
++      projectId: descriptor.projectId,
++      ...(descriptor.agentSessionId !== undefined ? { agentSessionId: descriptor.agentSessionId } : {}),
++      operationId: descriptor.operationId,
++      action: descriptor.action,
++      outcome: "allowed",
++      via: `grant:${grant.id}`,
++      argsHash: argsHashFor(descriptor.args),
++    });
++    return {
++      principal,
++      projectId: descriptor.projectId,
++      ...(descriptor.agentSessionId !== undefined ? { agentSessionId: descriptor.agentSessionId } : {}),
++      operationId: descriptor.operationId,
++      action: descriptor.action,
++      via: { kind: "grant", credentialId: grant.id },
++    };
++  } catch (err) {
++    if (err instanceof AuthorizationError) {
++      const descriptor = input.descriptor as Partial<OperationDescriptor> | null;
++      deps.sink.record({
++        ts: Date.now(),
++        actorUserId: null,
++        projectId: typeof descriptor?.projectId === "string" ? descriptor.projectId : "",
++        ...(typeof descriptor?.agentSessionId === "string" ? { agentSessionId: descriptor.agentSessionId } : {}),
++        operationId: typeof descriptor?.operationId === "string" ? descriptor.operationId : "",
++        action: typeof descriptor?.action === "string" ? descriptor.action : "unknown",
++        outcome: "denied",
++        reason: err.code,
++      });
++    }
++    throw err;
++  }
++}
+diff --git a/lib/server/authorization/grants.ts b/lib/server/authorization/grants.ts
+new file mode 100644
+index 0000000..ec29779
+--- /dev/null
++++ b/lib/server/authorization/grants.ts
+@@ -0,0 +1,181 @@
++/**
++ * Authorization slice (DRAFT) — explicit, bounded session grants.
++ *
++ * Grants cover the local development loop (read/write/execute/preview within
++ * an explicit scope) so every harmless-looking step does not need another
++ * approval click. They are reviewable (listActive), revocable, TTL-bounded,
++ * and constrained by actor, project, agent sessions, action categories,
++ * resource prefixes, and network egress. Grants NEVER cover `external`
++ * actions (push, remote deletion, disclosure, deployment, credential use,
++ * spending): those always require their own approval decision.
++ */
++
++import crypto from "node:crypto";
++import {
++  AuditSink,
++  AuthorizationError,
++  DenialCode,
++  GrantableCategory,
++  OperationDescriptor,
++  SessionGrant,
++} from "./types";
++import { categorize, GRANTABLE_CATEGORIES } from "./policy";
++import { normalizeResourcePath, validateId } from "./util";
++
++export interface GrantStoreOptions {
++  now?: () => number;
++  maxGrantTtlMs?: number;
++  maxBroadGrantTtlMs?: number;
++}
++
++export interface GrantIssueParams {
++  actorUserId: string;
++  projectId: string;
++  agentSessionIds: string[] | "*";
++  categories: GrantableCategory[];
++  resourcePrefixes: string[];
++  egress: "none" | "loopback";
++  ttlMs: number;
++  createdByOperationId: string;
++}
++
++function prefixMatches(prefix: string, resource: string): boolean {
++  if (prefix === "*") return true;
++  return resource === prefix || resource.startsWith(`${prefix}/`);
++}
++
++export class GrantStore {
++  private readonly now: () => number;
++  private readonly maxGrantTtlMs: number;
++  private readonly maxBroadGrantTtlMs: number;
++  private readonly grants = new Map<string, SessionGrant>();
++
++  constructor(options?: GrantStoreOptions) {
++    this.now = options?.now ?? Date.now;
++    this.maxGrantTtlMs = options?.maxGrantTtlMs ?? 8 * 60 * 60 * 1000;
++    this.maxBroadGrantTtlMs = options?.maxBroadGrantTtlMs ?? 60 * 60 * 1000;
++  }
++
++  issue(params: GrantIssueParams, sink?: AuditSink): SessionGrant {
++    validateId(params.actorUserId, "actorUserId", params.createdByOperationId);
++    validateId(params.projectId, "projectId", params.createdByOperationId);
++    validateId(params.createdByOperationId, "createdByOperationId");
++    if (params.agentSessionIds !== "*") {
++      if (params.agentSessionIds.length === 0) throw new Error("Grant requires explicit agent sessions or '*'.");
++      for (const s of params.agentSessionIds) validateId(s, "agentSessionId", params.createdByOperationId);
++    }
++    if (params.categories.length === 0) throw new Error("Grant requires at least one category.");
++    for (const c of params.categories) {
++      if (!GRANTABLE_CATEGORIES.has(c)) {
++        throw new Error(`Category is not grantable (external actions need approvals): ${String(c)}.`);
++      }
++    }
++    if (params.resourcePrefixes.length === 0) throw new Error("Grant requires explicit resource prefixes.");
++    const prefixes = params.resourcePrefixes.map((p) =>
++      p === "*" ? "*" : normalizeResourcePath(p, params.createdByOperationId),
++    );
++    if (params.egress !== "none" && params.egress !== "loopback") {
++      throw new Error("Grant egress must be 'none' or 'loopback' (external egress needs approvals).");
++    }
++    const broad = prefixes.includes("*");
++    const maxTtl = broad ? this.maxBroadGrantTtlMs : this.maxGrantTtlMs;
++    if (!Number.isInteger(params.ttlMs) || params.ttlMs < 1000 || params.ttlMs > maxTtl) {
++      throw new Error("Grant ttlMs is out of bounds for its scope.");
++    }
++    const grant: SessionGrant = {
++      id: crypto.randomBytes(8).toString("hex"),
++      actorUserId: params.actorUserId,
++      projectId: params.projectId,
++      agentSessionIds: params.agentSessionIds === "*" ? "*" : [...params.agentSessionIds],
++      categories: [...params.categories],
++      resourcePrefixes: prefixes,
++      egress: params.egress,
++      broad,
++      expiresAt: this.now() + params.ttlMs,
++      revokedAt: null,
++      createdByOperationId: params.createdByOperationId,
++      createdAt: this.now(),
++    };
++    this.grants.set(grant.id, grant);
++    sink?.record({
++      ts: this.now(),
++      actorUserId: grant.actorUserId,
++      projectId: grant.projectId,
++      operationId: grant.createdByOperationId,
++      action: "grant.issue",
++      outcome: "grant-issued",
++      via: grant.id,
++    });
++    return { ...grant, agentSessionIds: grant.agentSessionIds === "*" ? "*" : [...grant.agentSessionIds], categories: [...grant.categories], resourcePrefixes: [...grant.resourcePrefixes] };
++  }
++
++  revoke(grantId: string, byOperationId: string, sink?: AuditSink): void {
++    validateId(byOperationId, "operationId");
++    const grant = this.grants.get(grantId);
++    if (!grant) {
++      throw new AuthorizationError("GRANT_NOT_FOUND", "Grant does not exist.", 403, byOperationId);
++    }
++    grant.revokedAt = this.now();
++    sink?.record({
++      ts: this.now(),
++      actorUserId: grant.actorUserId,
++      projectId: grant.projectId,
++      operationId: byOperationId,
++      action: "grant.revoke",
++      outcome: "grant-revoked",
++      via: grant.id,
++    });
++  }
++
++  get(grantId: string): SessionGrant | null {
++    const grant = this.grants.get(grantId);
++    if (!grant) return null;
++    return {
++      ...grant,
++      agentSessionIds: grant.agentSessionIds === "*" ? "*" : [...grant.agentSessionIds],
++      categories: [...grant.categories],
++      resourcePrefixes: [...grant.resourcePrefixes],
++    };
++  }
++
++  /** Reviewability: active (unexpired, unrevoked) grants, optionally filtered. */
++  listActive(filter?: { actorUserId?: string; projectId?: string }): SessionGrant[] {
++    const out: SessionGrant[] = [];
++    for (const grant of this.grants.values()) {
++      if (grant.revokedAt !== null || this.now() >= grant.expiresAt) continue;
++      if (filter?.actorUserId !== undefined && grant.actorUserId !== filter.actorUserId) continue;
++      if (filter?.projectId !== undefined && grant.projectId !== filter.projectId) continue;
++      out.push(this.get(grant.id) as SessionGrant);
++    }
++    return out;
++  }
++
++  check(
++    grant: SessionGrant,
++    descriptor: OperationDescriptor,
++    actorUserId: string,
++  ): { ok: true } | { ok: false; code: DenialCode } {
++    if (this.now() >= grant.expiresAt) return { ok: false, code: "GRANT_EXPIRED" };
++    if (grant.revokedAt !== null) return { ok: false, code: "GRANT_REVOKED" };
++    if (grant.actorUserId !== actorUserId || grant.projectId !== descriptor.projectId) {
++      return { ok: false, code: "GRANT_OUT_OF_SCOPE" };
++    }
++    const category = categorize(descriptor.action);
++    if (!grant.categories.includes(category as GrantableCategory)) {
++      return { ok: false, code: "GRANT_OUT_OF_SCOPE" };
++    }
++    if (grant.agentSessionIds !== "*") {
++      if (descriptor.agentSessionId === undefined || !grant.agentSessionIds.includes(descriptor.agentSessionId)) {
++        return { ok: false, code: "GRANT_OUT_OF_SCOPE" };
++      }
++    }
++    if (descriptor.resource !== undefined) {
++      const covered = grant.resourcePrefixes.some((p) => prefixMatches(p, descriptor.resource as string));
++      if (!covered) return { ok: false, code: "GRANT_OUT_OF_SCOPE" };
++    }
++    const need = descriptor.networkNeed ?? "none";
++    if (need === "external") return { ok: false, code: "GRANT_OUT_OF_SCOPE" };
++    if (need === "loopback" && grant.egress !== "loopback") return { ok: false, code: "GRANT_OUT_OF_SCOPE" };
++    return { ok: true };
++  }
++}
+diff --git a/lib/server/authorization/policy.ts b/lib/server/authorization/policy.ts
+new file mode 100644
+index 0000000..9efdda0
+--- /dev/null
++++ b/lib/server/authorization/policy.ts
+@@ -0,0 +1,230 @@
++/**
++ * Authorization slice (DRAFT) — project access and per-action policy.
++ *
++ * Deliberately NOT command-name based: package scripts, tests, interpreters,
++ * and free-form shell input are arbitrary code. No command substring or
++ * regular-expression allowlist appears in this file; `exec` always requires
++ * a scoped grant or an explicit approval, regardless of what the command is
++ * named. This supersedes the substring tiering in lib/devbox/action-policy.ts
++ * as a security boundary (that module is untouched by this draft).
++ */
++
++import {
++  ActionCategory,
++  ActionKind,
++  AuthorizationError,
++  AuthorizationPrincipal,
++  GrantableCategory,
++  NetworkNeed,
++  OperationDescriptor,
++} from "./types";
++import { normalizeResourcePath, validateDestinationTransport, validateId } from "./util";
++
++export const ACTION_CATEGORY: Record<ActionKind, ActionCategory> = {
++  "session.status": "read",
++  "file.read": "read",
++  "logs.read": "read",
++  "file.write": "write",
++  "file.delete": "write",
++  "agent.stop": "write",
++  "agent.restore": "write",
++  "project.delete": "write",
++  "runtime.allocate": "execute",
++  exec: "execute",
++  "terminal.attach": "execute",
++  "terminal.input": "execute",
++  "terminal.resize": "execute",
++  "terminal.interrupt": "execute",
++  "preview.create": "preview",
++  "preview.access": "preview",
++  "preview.revoke": "preview",
++  "git.push": "external",
++  "remote.delete": "external",
++  disclosure: "external",
++  deploy: "external",
++  "credential.use": "external",
++  spend: "external",
++};
++
++const KNOWN_ACTIONS = new Set<string>(Object.keys(ACTION_CATEGORY));
++
++export const GRANTABLE_CATEGORIES: ReadonlySet<GrantableCategory> = new Set([
++  "read",
++  "write",
++  "execute",
++  "preview",
++]);
++
++export function categorize(action: ActionKind): ActionCategory {
++  const category = ACTION_CATEGORY[action];
++  if (!category) {
++    throw new AuthorizationError("UNKNOWN_ACTION", `Unknown action: ${String(action)}.`, 403);
++  }
++  return category;
++}
++
++/** Trusted server state: project ownership and per-project push destinations. */
++export interface ProjectRegistry {
++  getProjectOwner(projectId: string): string | null;
++  isAllowedPushDestination(projectId: string, destination: string): boolean;
++}
++
++/** Trusted server state: agent-session home project (owned by the runtime broker). */
++export interface SessionRegistry {
++  getSessionProject(agentSessionId: string): string | null;
++}
++
++export class InMemoryProjectRegistry implements ProjectRegistry {
++  private owners = new Map<string, string>();
++  private pushDestinations = new Map<string, Set<string>>();
++
++  registerPilotProject(projectId: string, ownerUserId: string, allowedPushDestinations?: string[]): void {
++    validateId(projectId, "projectId");
++    validateId(ownerUserId, "ownerUserId");
++    this.owners.set(projectId, ownerUserId);
++    this.pushDestinations.set(projectId, new Set(allowedPushDestinations ?? []));
++  }
++
++  getProjectOwner(projectId: string): string | null {
++    return this.owners.get(projectId) ?? null;
++  }
++
++  isAllowedPushDestination(projectId: string, destination: string): boolean {
++    return this.pushDestinations.get(projectId)?.has(destination) ?? false;
++  }
++}
++
++export class InMemorySessionRegistry implements SessionRegistry {
++  private sessions = new Map<string, string>();
++
++  registerSession(agentSessionId: string, projectId: string): void {
++    validateId(agentSessionId, "agentSessionId");
++    validateId(projectId, "projectId");
++    this.sessions.set(agentSessionId, projectId);
++  }
++
++  getSessionProject(agentSessionId: string): string | null {
++    return this.sessions.get(agentSessionId) ?? null;
++  }
++}
++
++const NETWORK_NEEDS: ReadonlySet<string> = new Set(["none", "loopback", "external"]);
++
++/** Runtime shape validation for untrusted descriptor input. Never throws for policy reasons. */
++export function validateDescriptor(input: unknown, operationId?: string): OperationDescriptor {
++  if (typeof input !== "object" || input === null) {
++    throw new AuthorizationError("MALFORMED_REQUEST", "descriptor must be an object.", 400, operationId);
++  }
++  const raw = input as Record<string, unknown>;
++  const descOperationId = validateId(raw.operationId, "operationId", operationId);
++  const projectId = validateId(raw.projectId, "projectId", descOperationId);
++  if (typeof raw.action !== "string" || !KNOWN_ACTIONS.has(raw.action)) {
++    throw new AuthorizationError("UNKNOWN_ACTION", "descriptor action is unknown.", 403, descOperationId);
++  }
++  const action = raw.action as ActionKind;
++
++  let agentSessionId: string | undefined;
++  if (raw.agentSessionId !== undefined) {
++    agentSessionId = validateId(raw.agentSessionId, "agentSessionId", descOperationId);
++  }
++  let resource: string | undefined;
++  if (raw.resource !== undefined) {
++    resource = normalizeResourcePath(raw.resource, descOperationId);
++  }
++  let destination: string | undefined;
++  if (raw.destination !== undefined) {
++    destination = validateDestinationTransport(raw.destination, descOperationId);
++  }
++  let revision: string | undefined;
++  if (raw.revision !== undefined) {
++    if (typeof raw.revision !== "string" || raw.revision.length === 0 || raw.revision.length > 256) {
++      throw new AuthorizationError("MALFORMED_REQUEST", "revision must be 1..256 chars.", 400, descOperationId);
++    }
++    if (/[\0-\x1F\x7F]/.test(raw.revision)) {
++      throw new AuthorizationError("MALFORMED_REQUEST", "revision contains control characters.", 400, descOperationId);
++    }
++    revision = raw.revision;
++  }
++  let protectedTarget: boolean | undefined;
++  if (raw.protectedTarget !== undefined) {
++    if (typeof raw.protectedTarget !== "boolean") {
++      throw new AuthorizationError("MALFORMED_REQUEST", "protectedTarget must be boolean.", 400, descOperationId);
++    }
++    protectedTarget = raw.protectedTarget;
++  }
++  let networkNeed: NetworkNeed | undefined;
++  if (raw.networkNeed !== undefined) {
++    if (typeof raw.networkNeed !== "string" || !NETWORK_NEEDS.has(raw.networkNeed)) {
++      throw new AuthorizationError("MALFORMED_REQUEST", "networkNeed is invalid.", 400, descOperationId);
++    }
++    networkNeed = raw.networkNeed as NetworkNeed;
++  }
++  if (action === "exec" && networkNeed === undefined) {
++    throw new AuthorizationError("MALFORMED_REQUEST", "exec must declare networkNeed.", 400, descOperationId);
++  }
++  if ((action === "git.push" || action === "deploy") && destination === undefined) {
++    throw new AuthorizationError("MALFORMED_REQUEST", `${action} requires a destination.`, 400, descOperationId);
++  }
++
++  return {
++    operationId: descOperationId,
++    projectId,
++    ...(agentSessionId !== undefined ? { agentSessionId } : {}),
++    action,
++    ...(resource !== undefined ? { resource } : {}),
++    ...(raw.args !== undefined ? { args: raw.args } : {}),
++    ...(destination !== undefined ? { destination } : {}),
++    ...(revision !== undefined ? { revision } : {}),
++    ...(protectedTarget !== undefined ? { protectedTarget } : {}),
++    ...(networkNeed !== undefined ? { networkNeed } : {}),
++  };
++}
++
++export type CredentialNeed = "none" | "grant-or-approval" | "explicit-approval";
++
++/**
++ * Pure policy step: project ownership, session home project, destination
++ * allowlist, and what kind of credential (if any) can satisfy the action.
++ * Throws typed AuthorizationError denials; performs no side effects.
++ */
++export function evaluatePolicy(
++  descriptor: OperationDescriptor,
++  principal: AuthorizationPrincipal,
++  projects: ProjectRegistry,
++  sessions: SessionRegistry,
++): { needs: CredentialNeed } {
++  const owner = projects.getProjectOwner(descriptor.projectId);
++  if (owner === null || owner !== principal.userId) {
++    throw new AuthorizationError(
++      "NO_PROJECT_ACCESS",
++      "No access to this project.",
++      403,
++      descriptor.operationId,
++    );
++  }
++  if (descriptor.agentSessionId !== undefined) {
++    const home = sessions.getSessionProject(descriptor.agentSessionId);
++    if (home === null || home !== descriptor.projectId) {
++      throw new AuthorizationError(
++        "NO_PROJECT_ACCESS",
++        "Agent session does not belong to this project.",
++        403,
++        descriptor.operationId,
++      );
++    }
++  }
++  if (descriptor.destination !== undefined && descriptor.action === "git.push") {
++    if (!projects.isAllowedPushDestination(descriptor.projectId, descriptor.destination)) {
++      throw new AuthorizationError(
++        "DESTINATION_NOT_ALLOWED",
++        "Push destination is not allowlisted for this project.",
++        403,
++        descriptor.operationId,
++      );
++    }
++  }
++  const category = categorize(descriptor.action);
++  if (category === "read") return { needs: "none" };
++  if (category === "external") return { needs: "explicit-approval" };
++  return { needs: "grant-or-approval" };
++}
+diff --git a/lib/server/authorization/types.ts b/lib/server/authorization/types.ts
+new file mode 100644
+index 0000000..a1608a1
+--- /dev/null
++++ b/lib/server/authorization/types.ts
+@@ -0,0 +1,174 @@
++/**
++ * Authorization slice (DRAFT) — server-enforced project/action boundary contracts.
++ *
++ * Status: isolated draft work on the review branch. Depends on PR #1
++ * (authentication) for verified user identity. Not yet wired into API routes,
++ * the tool dispatcher, the runtime broker, storage, terminal attachment,
++ * previews, or provider adapters; that integration is later work inside the
++ * authorization slice's own review gate. Durable-storage and multi-process
++ * follow-ups are documented in docs/authorization-slice-draft.md.
++ *
++ * Core rule: identity and project access derive from trusted server state
++ * (verified session + server project registry). Request-body user IDs, model
++ * claims, and frontend state are never authoritative here.
++ */
++
++export type ActionCategory = "read" | "write" | "execute" | "preview" | "external";
++
++export type ActionKind =
++  | "session.status"
++  | "file.read"
++  | "logs.read"
++  | "file.write"
++  | "file.delete"
++  | "agent.stop"
++  | "agent.restore"
++  | "project.delete"
++  | "runtime.allocate"
++  | "exec"
++  | "terminal.attach"
++  | "terminal.input"
++  | "terminal.resize"
++  | "terminal.interrupt"
++  | "preview.create"
++  | "preview.access"
++  | "preview.revoke"
++  | "git.push"
++  | "remote.delete"
++  | "disclosure"
++  | "deploy"
++  | "credential.use"
++  | "spend";
++
++export type NetworkNeed = "none" | "loopback" | "external";
++
++/**
++ * What the caller wants to do. The actor is deliberately absent: it is
++ * derived server-side from the verified session, never accepted from input.
++ */
++export interface OperationDescriptor {
++  operationId: string;
++  projectId: string;
++  agentSessionId?: string;
++  action: ActionKind;
++  /** Project-relative resource (path, slug, handle). Lexically validated. */
++  resource?: string;
++  /** Validated action arguments. Bound to approvals by hash, never trusted raw. */
++  args?: unknown;
++  destination?: string;
++  revision?: string;
++  protectedTarget?: boolean;
++  /** Required for `exec`. Grants never cover `external`. */
++  networkNeed?: NetworkNeed;
++}
++
++export interface AuthorizationPrincipal {
++  userId: string;
++}
++
++/** Grants may cover these categories only — never `external`. */
++export type GrantableCategory = "read" | "write" | "execute" | "preview";
++
++export interface SessionGrant {
++  id: string;
++  actorUserId: string;
++  projectId: string;
++  agentSessionIds: string[] | "*";
++  categories: GrantableCategory[];
++  /** Project-relative directory prefixes, or "*" entries for an explicitly broad grant. */
++  resourcePrefixes: string[];
++  egress: "none" | "loopback";
++  /** True when any resource prefix is "*": shorter max TTL, still explicit and revocable. */
++  broad: boolean;
++  expiresAt: number;
++  revokedAt: number | null;
++  createdByOperationId: string;
++  createdAt: number;
++}
++
++/**
++ * Single-use, HMAC-bound approval. Empty string is the stable sentinel for
++ * unset optional bindings (agentSessionId, destination, revision).
++ */
++export interface ApprovalToken {
++  v: 1;
++  id: string;
++  actorUserId: string;
++  projectId: string;
++  agentSessionId: string;
++  action: ActionKind;
++  argsHash: string;
++  destination: string;
++  revision: string;
++  operationId: string;
++  protectedTarget: boolean;
++  expiresAt: number;
++  sig: string;
++}
++
++export type DenialCode =
++  | "NOT_AUTHENTICATED"
++  | "MALFORMED_REQUEST"
++  | "NO_PROJECT_ACCESS"
++  | "UNKNOWN_ACTION"
++  | "APPROVAL_REQUIRED"
++  | "APPROVAL_INVALID"
++  | "APPROVAL_MISMATCH"
++  | "APPROVAL_EXPIRED"
++  | "APPROVAL_REVOKED"
++  | "APPROVAL_REPLAYED"
++  | "GRANT_NOT_FOUND"
++  | "GRANT_EXPIRED"
++  | "GRANT_REVOKED"
++  | "GRANT_OUT_OF_SCOPE"
++  | "DESTINATION_NOT_ALLOWED";
++
++export class AuthorizationError extends Error {
++  readonly code: DenialCode;
++  readonly status: number;
++  readonly operationId?: string;
++
++  constructor(code: DenialCode, message: string, status: number, operationId?: string) {
++    super(message);
++    this.name = "AuthorizationError";
++    this.code = code;
++    this.status = status;
++    this.operationId = operationId;
++  }
++}
++
++export interface AuthorizationSuccess {
++  principal: AuthorizationPrincipal;
++  projectId: string;
++  agentSessionId?: string;
++  operationId: string;
++  action: ActionKind;
++  via: { kind: "policy" | "grant" | "approval"; credentialId?: string };
++}
++
++export type AuthorizationOutcome =
++  | "allowed"
++  | "denied"
++  | "approval-issued"
++  | "approval-consumed"
++  | "approval-revoked"
++  | "grant-issued"
++  | "grant-revoked";
++
++export interface AuthorizationAuditEvent {
++  ts: number;
++  actorUserId: string | null;
++  projectId: string;
++  agentSessionId?: string;
++  operationId: string;
++  action: string;
++  outcome: AuthorizationOutcome;
++  via?: string;
++  reason?: string;
++  /** Arguments appear only as a hash. Raw args never enter the audit trail. */
++  argsHash?: string;
++}
++
++export interface AuditSink {
++  record(event: AuthorizationAuditEvent): void;
++}
+diff --git a/lib/server/authorization/util.ts b/lib/server/authorization/util.ts
+new file mode 100644
+index 0000000..a8a8639
+--- /dev/null
++++ b/lib/server/authorization/util.ts
+@@ -0,0 +1,130 @@
++/**
++ * Authorization slice (DRAFT) — small deterministic helpers.
++ */
++
++import crypto from "node:crypto";
++import { AuthorizationError } from "./types";
++
++const ID_PATTERN = /^[A-Za-z0-9._-]{1,128}$/;
++
++export function validateId(value: unknown, field: string, operationId?: string): string {
++  if (typeof value !== "string" || !ID_PATTERN.test(value)) {
++    throw new AuthorizationError(
++      "MALFORMED_REQUEST",
++      `${field} must match [A-Za-z0-9._-]{1,128}.`,
++      400,
++      operationId,
++    );
++  }
++  return value;
++}
++
++/**
++ * Deterministic JSON encoding (sorted keys, recursive) for approval arg binding.
++ * `undefined`, functions, and symbols are rejected: bindings must be explicit.
++ */
++export function stableStringify(value: unknown): string {
++  if (value === null) return "null";
++  const t = typeof value;
++  if (t === "string") return JSON.stringify(value);
++  if (t === "number") {
++    if (!Number.isFinite(value as number)) throw new Error("Non-finite number in bound args.");
++    return JSON.stringify(value);
++  }
++  if (t === "boolean") return value ? "true" : "false";
++  if (Array.isArray(value)) return `[${value.map((v) => stableStringify(v)).join(",")}]`;
++  if (t === "object") {
++    const entries = Object.entries(value as Record<string, unknown>)
++      .filter(([, v]) => v !== undefined)
++      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
++    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`).join(",")}}`;
++  }
++  throw new Error("Unserializable value in bound args.");
++}
++
++export function sha256Hex(data: string): string {
++  return crypto.createHash("sha256").update(data, "utf8").digest("hex");
++}
++
++export function argsHashFor(args: unknown): string {
++  return sha256Hex(stableStringify(args ?? null));
++}
++
++export function timingSafeEqualHex(a: string, b: string): boolean {
++  if (!/^[0-9a-f]+$/.test(a) || !/^[0-9a-f]+$/.test(b)) return false;
++  const ab = Buffer.from(a, "hex");
++  const bb = Buffer.from(b, "hex");
++  if (ab.length !== bb.length) return false;
++  return crypto.timingSafeEqual(ab, bb);
++}
++
++/**
++ * Lexical project-relative path validation. Rejects absolute paths, drive
++ * prefixes, separators outside "/", ".", and ".." segments. This is the
++ * authorization-layer check; symlink-race-resistant confinement during the
++ * actual filesystem operation belongs to the workspace slice.
++ */
++export function normalizeResourcePath(value: unknown, operationId?: string): string {
++  if (typeof value !== "string" || value.length === 0 || value.length > 1024) {
++    throw new AuthorizationError("MALFORMED_REQUEST", "resource must be 1..1024 chars.", 400, operationId);
++  }
++  if (value.includes("\0") || value.includes("\\")) {
++    throw new AuthorizationError("MALFORMED_REQUEST", "resource contains illegal characters.", 400, operationId);
++  }
++  if (value.startsWith("/") || /^[A-Za-z]:/.test(value)) {
++    throw new AuthorizationError("MALFORMED_REQUEST", "resource must be project-relative.", 400, operationId);
++  }
++  const segments = value.split("/");
++  for (const seg of segments) {
++    if (seg === "" || seg === "." || seg === "..") {
++      throw new AuthorizationError(
++        "MALFORMED_REQUEST",
++        "resource must not contain empty, '.', or '..' segments.",
++        400,
++        operationId,
++      );
++    }
++  }
++  return segments.join("/");
++}
++
++/**
++ * Transport allowlist for external destinations. Permits https (no userinfo,
++ * so no embedded credentials) and ssh/scp-style destinations with an optional
++ * username but no password. Exact destinations are additionally gated by the
++ * per-project allowlist in the server registry (default deny).
++ */
++export function validateDestinationTransport(value: unknown, operationId?: string): string {
++  if (typeof value !== "string" || value.length === 0 || value.length > 1024 || /[\s\0]/.test(value)) {
++    throw new AuthorizationError("MALFORMED_REQUEST", "destination is malformed.", 400, operationId);
++  }
++  if (value.startsWith("https://")) {
++    const authority = value.slice("https://".length).split("/", 1)[0] ?? "";
++    if (authority === "" || authority.includes("@")) {
++      throw new AuthorizationError(
++        "MALFORMED_REQUEST",
++        "https destinations must not embed userinfo/credentials.",
++        400,
++        operationId,
++      );
++    }
++    return value;
++  }
++  if (value.startsWith("ssh://")) {
++    const authority = value.slice("ssh://".length).split("/", 1)[0] ?? "";
++    const userinfo = authority.includes("@") ? (authority.split("@")[0] ?? "") : "";
++    if (authority === "" || userinfo.includes(":")) {
++      throw new AuthorizationError("MALFORMED_REQUEST", "ssh destinations must not embed passwords.", 400, operationId);
++    }
++    return value;
++  }
++  if (/^[A-Za-z0-9._-]+@[A-Za-z0-9._-]+:.+$/.test(value)) {
++    return value;
++  }
++  throw new AuthorizationError(
++    "MALFORMED_REQUEST",
++    "destination transport not allowed (https without userinfo, or ssh/scp-style without password).",
++    400,
++    operationId,
++  );
++}
+diff --git a/scripts/test-action-authorization.ts b/scripts/test-action-authorization.ts
+new file mode 100644
+index 0000000..609d471
+--- /dev/null
++++ b/scripts/test-action-authorization.ts
+@@ -0,0 +1,361 @@
++/**
++ * Authorization slice (DRAFT) — server-enforced boundary regression tests.
++ *
++ * Covers: unauthenticated denial; cross-user/project/agent denial; forged,
++ * expired, revoked, replayed, and altered approvals; scoped session grants
++ * (issue/check/revoke/expiry/review); exec-as-arbitrary-code (no
++ * command-name bypass); external actions requiring their own approval;
++ * terminal/preview ownership; denial without provider side effects; and a
++ * redacted audit trail. Deterministic: fixed fixtures plus a manual clock.
++ */
++import assert from "node:assert/strict";
++import { ApprovalIssuer } from "../lib/server/authorization/approvals";
++import {
++  authorize,
++  AuthorizeDeps,
++  createDefaultSessionValidator,
++} from "../lib/server/authorization/enforce";
++import { GrantStore } from "../lib/server/authorization/grants";
++import {
++  InMemoryProjectRegistry,
++  InMemorySessionRegistry,
++} from "../lib/server/authorization/policy";
++import {
++  AuthorizationAuditEvent,
++  AuthorizationError,
++  AuthorizationSuccess,
++} from "../lib/server/authorization/types";
++
++let now = 1_700_000_000_000;
++const clock = () => now;
++
++const APPROVAL_SECRET = "test-only-action-auth-secret-for-authz-tests-01";
++
++const TOKEN_A = "token-userA";
++const TOKEN_B = "token-userB";
++
++function fakeValidator(token: string): { userId: string } | null {
++  if (token === TOKEN_A) return { userId: "userA" };
++  if (token === TOKEN_B) return { userId: "userB" };
++  return null;
++}
++
++interface Fixture {
++  deps: AuthorizeDeps;
++  events: AuthorizationAuditEvent[];
++  providerCalls: string[];
++  projects: InMemoryProjectRegistry;
++  sessions: InMemorySessionRegistry;
++  approvals: ApprovalIssuer;
++  grants: GrantStore;
++}
++
++function buildFixture(): Fixture {
++  const events: AuthorizationAuditEvent[] = [];
++  const providerCalls: string[] = [];
++  const projects = new InMemoryProjectRegistry();
++  projects.registerPilotProject("projP", "userA", ["https://github.com/example/projP.git"]);
++  projects.registerPilotProject("projQ", "userB");
++  const sessions = new InMemorySessionRegistry();
++  sessions.registerSession("sessA1", "projP");
++  sessions.registerSession("sessA2", "projP");
++  sessions.registerSession("sessB1", "projQ");
++  const deps: AuthorizeDeps = {
++    validateSession: fakeValidator,
++    projects,
++    sessions,
++    approvals: new ApprovalIssuer(APPROVAL_SECRET, { now: clock }),
++    grants: new GrantStore({ now: clock }),
++    sink: { record: (e) => events.push(e) },
++  };
++  return { deps, events, providerCalls, projects, sessions, approvals: deps.approvals, grants: deps.grants };
++}
++
++async function runIfAuthorized(
++  fx: Fixture,
++  input: Parameters<typeof authorize>[1],
++): Promise<AuthorizationSuccess> {
++  const authz = authorize(fx.deps, input);
++  fx.providerCalls.push(`${authz.action}:${authz.operationId}`);
++  return authz;
++}
++
++async function expectDenial(
++  fx: Fixture,
++  input: Parameters<typeof authorize>[1],
++  code: string,
++): Promise<AuthorizationError> {
++  const callsBefore = fx.providerCalls.length;
++  try {
++    await runIfAuthorized(fx, input);
++  } catch (err) {
++    assert.ok(err instanceof AuthorizationError, "denial must be a typed AuthorizationError");
++    assert.equal(err.code, code, `expected denial ${code}`);
++    assert.equal(fx.providerCalls.length, callsBefore, "denied requests must not touch the provider");
++    return err;
++  }
++  assert.fail(`expected denial ${code}, but the action was allowed`);
++}
++
++async function main(): Promise<void> {
++  console.log("=== ACTION AUTHORIZATION BOUNDARY TESTS (DRAFT) ===");
++
++  console.log("--- 1. Unauthenticated requests are denied ---");
++  {
++    const fx = buildFixture();
++    await expectDenial(fx, { token: "", descriptor: { operationId: "op-1", projectId: "projP", action: "file.read" } }, "NOT_AUTHENTICATED");
++    await expectDenial(fx, { token: "bogus", descriptor: { operationId: "op-2", projectId: "projP", action: "file.read" } }, "NOT_AUTHENTICATED");
++    const err = await expectDenial(fx, { token: "", descriptor: { operationId: "op-3", projectId: "projP", action: "exec", networkNeed: "none", args: { argv: ["id"] } } }, "NOT_AUTHENTICATED");
++    assert.equal(err.status, 401);
++    console.log("[PASS] Unauthenticated denied with no provider side effects.");
++  }
++
++  console.log("--- 2. Reads allowed by policy; cross-project reads denied ---");
++  {
++    const fx = buildFixture();
++    const ok = await runIfAuthorized(fx, {
++      token: TOKEN_A,
++      descriptor: { operationId: "op-10", projectId: "projP", action: "file.read", resource: "src/app.ts" },
++    });
++    assert.equal(ok.via.kind, "policy");
++    const okStatus = await runIfAuthorized(fx, {
++      token: TOKEN_A,
++      descriptor: { operationId: "op-11", projectId: "projP", action: "session.status", agentSessionId: "sessA1" },
++    });
++    assert.equal(okStatus.via.kind, "policy");
++    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-12", projectId: "projQ", action: "file.read", resource: "src/app.ts" } }, "NO_PROJECT_ACCESS");
++    await expectDenial(fx, { token: TOKEN_B, descriptor: { operationId: "op-13", projectId: "projP", action: "logs.read" } }, "NO_PROJECT_ACCESS");
++    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-14", projectId: "nope", action: "file.read" } }, "NO_PROJECT_ACCESS");
++    console.log("[PASS] Policy reads and project boundary enforced.");
++  }
++
++  console.log("--- 3. Writes need a grant or approval; malformed input rejected ---");
++  {
++    const fx = buildFixture();
++    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-20", projectId: "projP", action: "file.write", resource: "src/app.ts", args: { content: "x" } } }, "APPROVAL_REQUIRED");
++    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-21", projectId: "projP", action: "file.write", resource: "../escape.ts", args: {} } }, "MALFORMED_REQUEST");
++    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-22", projectId: "projP", action: "file.write", resource: "/abs/path.ts", args: {} } }, "MALFORMED_REQUEST");
++    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "bad op!", projectId: "projP", action: "file.read" } }, "MALFORMED_REQUEST");
++    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-23", projectId: "projP", action: "nope.action" } }, "UNKNOWN_ACTION");
++    console.log("[PASS] Credential requirement and descriptor validation enforced.");
++  }
++
++  console.log("--- 4. Scoped grant happy path ---");
++  {
++    const fx = buildFixture();
++    const grant = fx.grants.issue(
++      {
++        actorUserId: "userA",
++        projectId: "projP",
++        agentSessionIds: ["sessA1"],
++        categories: ["write", "execute"],
++        resourcePrefixes: ["src"],
++        egress: "loopback",
++        ttlMs: 60 * 60 * 1000,
++        createdByOperationId: "op-30",
++      },
++      fx.deps.sink,
++    );
++    const ok = await runIfAuthorized(fx, {
++      token: TOKEN_A,
++      grantId: grant.id,
++      descriptor: { operationId: "op-31", projectId: "projP", agentSessionId: "sessA1", action: "file.write", resource: "src/app.ts", args: { content: "x" } },
++    });
++    assert.equal(ok.via.kind, "grant");
++    assert.equal(ok.via.credentialId, grant.id);
++    const okExec = await runIfAuthorized(fx, {
++      token: TOKEN_A,
++      grantId: grant.id,
++      descriptor: { operationId: "op-32", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args: { argv: ["npm", "test"] }, networkNeed: "loopback" },
++    });
++    assert.equal(okExec.via.kind, "grant");
++    assert.equal(fx.providerCalls.length, 2);
++    console.log("[PASS] In-scope grant authorizes write and exec.");
++  }
++
++  console.log("--- 5. Grant scope denials (resource, session, category, network) ---");
++  {
++    const fx = buildFixture();
++    const grant = fx.grants.issue({
++      actorUserId: "userA",
++      projectId: "projP",
++      agentSessionIds: ["sessA1"],
++      categories: ["write", "execute"],
++      resourcePrefixes: ["src"],
++      egress: "loopback",
++      ttlMs: 60 * 60 * 1000,
++      createdByOperationId: "op-40",
++    });
++    await expectDenial(fx, { token: TOKEN_A, grantId: grant.id, descriptor: { operationId: "op-41", projectId: "projP", agentSessionId: "sessA1", action: "file.write", resource: "etc/config", args: {} } }, "GRANT_OUT_OF_SCOPE");
++    await expectDenial(fx, { token: TOKEN_A, grantId: grant.id, descriptor: { operationId: "op-42", projectId: "projP", agentSessionId: "sessA2", action: "file.write", resource: "src/app.ts", args: {} } }, "GRANT_OUT_OF_SCOPE");
++    await expectDenial(fx, { token: TOKEN_A, grantId: grant.id, descriptor: { operationId: "op-43", projectId: "projP", agentSessionId: "sessA1", action: "preview.create", resource: "previews/a" } }, "GRANT_OUT_OF_SCOPE");
++    await expectDenial(fx, { token: TOKEN_B, grantId: grant.id, descriptor: { operationId: "op-44", projectId: "projP", agentSessionId: "sessA1", action: "file.write", resource: "src/app.ts", args: {} } }, "NO_PROJECT_ACCESS");
++    await expectDenial(fx, { token: TOKEN_A, grantId: grant.id, descriptor: { operationId: "op-45", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args: { argv: ["curl", "https://example.com"] }, networkNeed: "external" } }, "GRANT_OUT_OF_SCOPE");
++    console.log("[PASS] Out-of-scope grant use denied across all scope axes.");
++  }
++
++  console.log("--- 6. Grant lifecycle: revoke, expiry, unknown, reviewability ---");
++  {
++    const fx = buildFixture();
++    const g1 = fx.grants.issue({ actorUserId: "userA", projectId: "projP", agentSessionIds: ["sessA1"], categories: ["write"], resourcePrefixes: ["src"], egress: "none", ttlMs: 60 * 60 * 1000, createdByOperationId: "op-50" }, fx.deps.sink);
++    const g2 = fx.grants.issue({ actorUserId: "userA", projectId: "projP", agentSessionIds: ["sessA1"], categories: ["read"], resourcePrefixes: ["src"], egress: "none", ttlMs: 2000, createdByOperationId: "op-51" }, fx.deps.sink);
++    assert.equal(fx.grants.listActive({ projectId: "projP" }).length, 2);
++    fx.grants.revoke(g1.id, "op-52", fx.deps.sink);
++    await expectDenial(fx, { token: TOKEN_A, grantId: g1.id, descriptor: { operationId: "op-53", projectId: "projP", agentSessionId: "sessA1", action: "file.write", resource: "src/a.ts", args: {} } }, "GRANT_REVOKED");
++    now += 5000;
++    await expectDenial(fx, { token: TOKEN_A, grantId: g2.id, descriptor: { operationId: "op-54", projectId: "projP", agentSessionId: "sessA1", action: "file.write", resource: "src/a.ts", args: {} } }, "GRANT_EXPIRED");
++    await expectDenial(fx, { token: TOKEN_A, grantId: "deadbeefdeadbeef", descriptor: { operationId: "op-55", projectId: "projP", action: "file.write", resource: "src/a.ts", args: {} } }, "GRANT_NOT_FOUND");
++    assert.equal(fx.grants.listActive({ projectId: "projP" }).length, 0);
++    console.log("[PASS] Revocation, expiry, unknown grants, and review listing behave.");
++  }
++
++  console.log("--- 7. Grant issuance is bounded by construction ---");
++  {
++    const fx = buildFixture();
++    assert.throws(() =>
++      fx.grants.issue({ actorUserId: "userA", projectId: "projP", agentSessionIds: ["sessA1"], categories: ["external" as unknown as "write"], resourcePrefixes: ["src"], egress: "none", ttlMs: 60000, createdByOperationId: "op-60" }),
++    );
++    assert.throws(() =>
++      fx.grants.issue({ actorUserId: "userA", projectId: "projP", agentSessionIds: ["sessA1"], categories: ["write"], resourcePrefixes: [], egress: "none", ttlMs: 60000, createdByOperationId: "op-61" }),
++    );
++    assert.throws(() =>
++      fx.grants.issue({ actorUserId: "userA", projectId: "projP", agentSessionIds: ["sessA1"], categories: ["write"], resourcePrefixes: ["src"], egress: "external" as unknown as "none", ttlMs: 60000, createdByOperationId: "op-62" }),
++    );
++    assert.throws(() =>
++      fx.grants.issue({ actorUserId: "userA", projectId: "projP", agentSessionIds: ["sessA1"], categories: ["write"], resourcePrefixes: ["src"], egress: "none", ttlMs: 24 * 60 * 60 * 1000, createdByOperationId: "op-63" }),
++    );
++    assert.throws(() =>
++      fx.grants.issue({ actorUserId: "userA", projectId: "projP", agentSessionIds: ["sessA1"], categories: ["write"], resourcePrefixes: ["*"], egress: "none", ttlMs: 8 * 60 * 60 * 1000, createdByOperationId: "op-64" }),
++    );
++    const broad = fx.grants.issue({ actorUserId: "userA", projectId: "projP", agentSessionIds: ["sessA1"], categories: ["write"], resourcePrefixes: ["*"], egress: "none", ttlMs: 30 * 60 * 1000, createdByOperationId: "op-65" });
++    assert.equal(broad.broad, true);
++    assert.throws(() => new ApprovalIssuer("short"), /at least 32/);
++    console.log("[PASS] External categories, unbounded TTL/egress, and weak secrets rejected at issuance.");
++  }
++
++  console.log("--- 8. Approval happy path and single-use replay rejection ---");
++  {
++    const fx = buildFixture();
++    const args = { argv: ["npm", "test"] };
++    const { serialized } = fx.approvals.issue(
++      { actorUserId: "userA", projectId: "projP", agentSessionId: "sessA1", action: "exec", args, destination: "", revision: "", operationId: "op-70", protectedTarget: false },
++      fx.deps.sink,
++    );
++    const ok = await runIfAuthorized(fx, {
++      token: TOKEN_A,
++      approval: serialized,
++      descriptor: { operationId: "op-70", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args, networkNeed: "external" },
++    });
++    assert.equal(ok.via.kind, "approval");
++    assert.equal(fx.providerCalls.length, 1);
++    await expectDenial(fx, {
++      token: TOKEN_A,
++      approval: serialized,
++      descriptor: { operationId: "op-70", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args, networkNeed: "external" },
++    }, "APPROVAL_REPLAYED");
++    assert.equal(fx.providerCalls.length, 1);
++    console.log("[PASS] Approval authorizes once; replay rejected without provider contact.");
++  }
++
++  console.log("--- 9. Forged, altered, expired, and revoked approvals fail ---");
++  {
++    const fx = buildFixture();
++    const args = { argv: ["npm", "run", "build"] };
++    const base = { actorUserId: "userA", projectId: "projP", agentSessionId: "sessA1", action: "exec" as const, destination: "", revision: "", protectedTarget: false };
++    const good = fx.approvals.issue({ ...base, args, operationId: "op-80" });
++    const forged = good.serialized.slice(0, -1) + (good.serialized.endsWith("0") ? "1" : "0");
++    await expectDenial(fx, { token: TOKEN_A, approval: forged, descriptor: { operationId: "op-80", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args, networkNeed: "none" } }, "APPROVAL_INVALID");
++    await expectDenial(fx, { token: TOKEN_A, approval: "not-a-token", descriptor: { operationId: "op-81", projectId: "projP", action: "file.write", resource: "src/a.ts", args: {} } }, "APPROVAL_INVALID");
++    await expectDenial(fx, { token: TOKEN_A, approval: good.serialized, descriptor: { operationId: "op-80", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args: { argv: ["rm", "-rf", "/"] }, networkNeed: "none" } }, "APPROVAL_MISMATCH");
++    await expectDenial(fx, { token: TOKEN_A, approval: good.serialized, descriptor: { operationId: "op-82", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args, networkNeed: "none" } }, "APPROVAL_MISMATCH");
++    await expectDenial(fx, { token: TOKEN_A, approval: good.serialized, descriptor: { operationId: "op-80", projectId: "projP", agentSessionId: "sessA2", action: "exec", resource: "src", args, networkNeed: "none" } }, "APPROVAL_MISMATCH");
++    await expectDenial(fx, { token: TOKEN_B, approval: good.serialized, descriptor: { operationId: "op-80", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args, networkNeed: "none" } }, "NO_PROJECT_ACCESS");
++    const short = fx.approvals.issue({ ...base, args, operationId: "op-83", ttlMs: 1000 });
++    now += 2000;
++    await expectDenial(fx, { token: TOKEN_A, approval: short.serialized, descriptor: { operationId: "op-83", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args, networkNeed: "none" } }, "APPROVAL_EXPIRED");
++    const rev = fx.approvals.issue({ ...base, args, operationId: "op-84" });
++    fx.approvals.revoke(rev.token.id, "op-85", fx.deps.sink);
++    await expectDenial(fx, { token: TOKEN_A, approval: rev.serialized, descriptor: { operationId: "op-84", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args, networkNeed: "none" } }, "APPROVAL_REVOKED");
++    console.log("[PASS] All approval attack variants rejected.");
++  }
++
++  console.log("--- 10. Exec is arbitrary code: no command-name bypass ---");
++  {
++    const fx = buildFixture();
++    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-90", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args: { argv: ["npm", "test"] }, networkNeed: "none" } }, "APPROVAL_REQUIRED");
++    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-91", projectId: "projP", action: "exec", resource: "src", args: { argv: ["lint-all"] } } }, "MALFORMED_REQUEST");
++    const readOnly = fx.grants.issue({ actorUserId: "userA", projectId: "projP", agentSessionIds: ["sessA1"], categories: ["read"], resourcePrefixes: ["src"], egress: "none", ttlMs: 60000, createdByOperationId: "op-92" });
++    await expectDenial(fx, { token: TOKEN_A, grantId: readOnly.id, descriptor: { operationId: "op-93", projectId: "projP", agentSessionId: "sessA1", action: "exec", resource: "src", args: { argv: ["build", "all"] }, networkNeed: "none" } }, "GRANT_OUT_OF_SCOPE");
++    console.log("[PASS] Harmless-looking command names grant nothing.");
++  }
++
++  console.log("--- 11. External actions need their own explicit approval ---");
++  {
++    const fx = buildFixture();
++    const grant = fx.grants.issue({ actorUserId: "userA", projectId: "projP", agentSessionIds: ["sessA1"], categories: ["write", "execute", "preview"], resourcePrefixes: ["*"], egress: "loopback", ttlMs: 30 * 60 * 1000, createdByOperationId: "op-100" });
++    await expectDenial(fx, { token: TOKEN_A, grantId: grant.id, descriptor: { operationId: "op-101", projectId: "projP", agentSessionId: "sessA1", action: "git.push", destination: "https://github.com/example/projP.git", revision: "abc123", args: { branch: "feature" } } }, "APPROVAL_REQUIRED");
++    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-102", projectId: "projP", action: "git.push", destination: "https://evil.example/stoat.git", args: { branch: "main" } } }, "DESTINATION_NOT_ALLOWED");
++    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-103", projectId: "projP", action: "git.push", destination: "https://user:pass@github.com/example/projP.git", args: {} } }, "MALFORMED_REQUEST");
++    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-104", projectId: "projP", action: "deploy", destination: "https://prod.example/app" } }, "APPROVAL_REQUIRED");
++    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-105", projectId: "projP", action: "spend", args: { amount: 1 } } }, "APPROVAL_REQUIRED");
++    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-106", projectId: "projP", action: "credential.use", resource: "providers/github" } }, "APPROVAL_REQUIRED");
++    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-107", projectId: "projP", action: "remote.delete", destination: "https://github.com/example/projP.git", args: { branch: "old" } } }, "APPROVAL_REQUIRED");
++    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-108", projectId: "projP", action: "disclosure", args: { channel: "pastebin" } } }, "APPROVAL_REQUIRED");
++    const pushArgs = { branch: "feature" };
++    const { serialized } = fx.approvals.issue({ actorUserId: "userA", projectId: "projP", agentSessionId: "sessA1", action: "git.push", args: pushArgs, destination: "https://github.com/example/projP.git", revision: "abc123", operationId: "op-109", protectedTarget: false }, fx.deps.sink);
++    const ok = await runIfAuthorized(fx, { token: TOKEN_A, approval: serialized, descriptor: { operationId: "op-109", projectId: "projP", agentSessionId: "sessA1", action: "git.push", destination: "https://github.com/example/projP.git", revision: "abc123", args: pushArgs } });
++    assert.equal(ok.via.kind, "approval");
++    const prot = fx.approvals.issue({ actorUserId: "userA", projectId: "projP", agentSessionId: "sessA1", action: "git.push", args: { branch: "main" }, destination: "https://github.com/example/projP.git", revision: "abc123", operationId: "op-110", protectedTarget: true });
++    await expectDenial(fx, { token: TOKEN_A, approval: prot.serialized, descriptor: { operationId: "op-110", projectId: "projP", agentSessionId: "sessA1", action: "git.push", destination: "https://github.com/example/projP.git", revision: "abc123", protectedTarget: false, args: { branch: "main" } } }, "APPROVAL_MISMATCH");
++    console.log("[PASS] External actions gated on exact approvals; no carried-forward auto rules.");
++  }
++
++  console.log("--- 12. Terminal attach and preview access enforce ownership ---");
++  {
++    const fx = buildFixture();
++    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-120", projectId: "projP", agentSessionId: "sessB1", action: "terminal.attach", resource: "sessions/sessB1" } }, "NO_PROJECT_ACCESS");
++    await expectDenial(fx, { token: TOKEN_B, descriptor: { operationId: "op-121", projectId: "projP", agentSessionId: "sessA1", action: "terminal.attach", resource: "sessions/sessA1" } }, "NO_PROJECT_ACCESS");
++    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-122", projectId: "projP", agentSessionId: "ghost", action: "terminal.attach", resource: "sessions/ghost" } }, "NO_PROJECT_ACCESS");
++    await expectDenial(fx, { token: TOKEN_B, descriptor: { operationId: "op-123", projectId: "projP", action: "preview.access", resource: "previews/slugA" } }, "NO_PROJECT_ACCESS");
++    const grant = fx.grants.issue({ actorUserId: "userA", projectId: "projP", agentSessionIds: ["sessA1"], categories: ["execute", "preview"], resourcePrefixes: ["sessions", "previews"], egress: "none", ttlMs: 60000, createdByOperationId: "op-124" });
++    const okAttach = await runIfAuthorized(fx, { token: TOKEN_A, grantId: grant.id, descriptor: { operationId: "op-125", projectId: "projP", agentSessionId: "sessA1", action: "terminal.attach", resource: "sessions/sessA1" } });
++    assert.equal(okAttach.via.kind, "grant");
++    const okPreview = await runIfAuthorized(fx, { token: TOKEN_A, grantId: grant.id, descriptor: { operationId: "op-126", projectId: "projP", agentSessionId: "sessA1", action: "preview.access", resource: "previews/slugA" } });
++    assert.equal(okPreview.via.kind, "grant");
++    console.log("[PASS] Reconnect and preview paths enforce the same boundary.");
++  }
++
++  console.log("--- 13. Audit trail is ordered, typed, and secret-free ---");
++  {
++    const fx = buildFixture();
++    await expectDenial(fx, { token: TOKEN_A, descriptor: { operationId: "op-130", projectId: "projP", action: "spend", args: { token: "TOP-SECRET-should-never-appear" } } }, "APPROVAL_REQUIRED");
++    await runIfAuthorized(fx, { token: TOKEN_A, descriptor: { operationId: "op-131", projectId: "projP", action: "file.read", resource: "src/a.ts" } });
++    const denied = fx.events.filter((e) => e.outcome === "denied");
++    const allowed = fx.events.filter((e) => e.outcome === "allowed");
++    assert.equal(denied.length, 1);
++    assert.equal(denied[0]?.reason, "APPROVAL_REQUIRED");
++    assert.equal(allowed.length, 1);
++    assert.equal(allowed[0]?.via, "policy");
++    const blob = JSON.stringify(fx.events);
++    assert.ok(!blob.includes("TOP-SECRET"), "raw args must never enter the audit trail");
++    assert.ok(!blob.includes(APPROVAL_SECRET), "issuer secret must never enter the audit trail");
++    const hashes = fx.events.map((e) => e.argsHash).filter((h): h is string => !!h);
++    for (const h of hashes) assert.match(h, /^[0-9a-f]{64}$/);
++    console.log("[PASS] Audit events complete with args bound by hash only.");
++  }
++
++  console.log("--- 14. Default session validator fails closed without auth env ---");
++  {
++    const validate = createDefaultSessionValidator();
++    assert.equal(validate("garbage-token"), null);
++    assert.equal(validate(""), null);
++    console.log("[PASS] PR #1 identity dependency fails closed on invalid sessions.");
++  }
++
++  console.log("=== ALL ACTION AUTHORIZATION TESTS PASSED ===");
++}
++
++main().catch((err) => {
++  console.error("Action authorization test failed:", err);
++  process.exit(1);
++});
+-- 
+2.39.5
+
