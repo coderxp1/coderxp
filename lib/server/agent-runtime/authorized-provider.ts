@@ -10,6 +10,7 @@
  */
 
 import { AuthorizationError } from "../authorization/types";
+import { stableStringify } from "../authorization/util";
 import type { SessionRuntime } from "./provider";
 import type {
   AuthorizedCall,
@@ -20,9 +21,65 @@ import type {
   SessionInfo,
 } from "./types";
 
+/**
+ * Canonical encoding used for dispatch-equality. This MUST be the same
+ * canonical form the authorization layer hashes (`stableStringify`: sorted
+ * keys, recursive), otherwise the equality gate and the approval binding
+ * disagree about what "the same operation" means. A key-order-sensitive
+ * `JSON.stringify` here would treat two operations as different that the
+ * approval hash treated as identical, and vice versa.
+ */
 function stableJson(value: unknown): string {
-  return JSON.stringify(value) ?? "null";
+  try {
+    return stableStringify(value ?? null);
+  } catch {
+    // Unserializable bound args (function/symbol/non-finite) can never match a
+    // canonical authorization binding: encode to a form that always differs.
+    return "__unserializable__";
+  }
 }
+
+/** Bound exec arguments as authorized: argv/script plus the bound timeout. */
+export interface BoundExecArgs {
+  argv?: string[];
+  script?: string;
+  timeoutMs?: number;
+}
+
+/**
+ * Rebuild the dispatchable exec arguments from the AUTHORIZED descriptor only.
+ * Callers must never dispatch fields re-read from the request body: this is
+ * the single place that turns bound arguments back into an ExecRequest, so
+ * the dispatched operation is by construction the authorized one.
+ */
+export function boundExecRequest(call: AuthorizedCall, sessionId: string): ExecRequest {
+  const bound = (call.descriptor.args ?? {}) as BoundExecArgs;
+  // The descriptor carries these as strings; narrow to the dispatched unions.
+  // Anything outside the union fails closed rather than defaulting.
+  const execMode = call.descriptor.execMode;
+  if (execMode !== "argv" && execMode !== "shell-script") {
+    throw mismatch(call.descriptor.operationId, "exec mode");
+  }
+  const networkNeed = call.descriptor.networkNeed;
+  if (networkNeed !== "none" && networkNeed !== "loopback" && networkNeed !== "external") {
+    throw mismatch(call.descriptor.operationId, "network scope");
+  }
+  return {
+    operationId: call.descriptor.operationId,
+    projectId: call.descriptor.projectId,
+    agentSessionId: sessionId,
+    resource: call.descriptor.resource ?? "",
+    args: {
+      ...(Array.isArray(bound.argv) ? { argv: bound.argv } : {}),
+      ...(typeof bound.script === "string" ? { script: bound.script } : {}),
+    },
+    execMode,
+    networkNeed,
+    timeoutMs: typeof bound.timeoutMs === "number" ? bound.timeoutMs : DEFAULT_BOUND_TIMEOUT_MS,
+  };
+}
+
+export const DEFAULT_BOUND_TIMEOUT_MS = 60_000;
 
 function mismatch(operationId: string, what: string): AuthorizationError {
   return new AuthorizationError(
@@ -66,9 +123,23 @@ export class AuthorizedRuntime {
     requireBase(call, "exec", req.projectId, req.agentSessionId);
     if (call.authz.operationId !== req.operationId) throw mismatch(req.operationId, "operation id");
     if ((call.descriptor.resource ?? "") !== req.resource) throw mismatch(req.operationId, "resource");
-    if (stableJson(call.descriptor.args ?? null) !== stableJson(req.args)) throw mismatch(req.operationId, "arguments");
+    // The authorized args carry the bound timeout alongside argv/script; compare
+    // only the executable portion against the dispatched args.
+    const bound = (call.descriptor.args ?? {}) as BoundExecArgs;
+    const boundExecOnly = {
+      ...(Array.isArray(bound.argv) ? { argv: bound.argv } : {}),
+      ...(typeof bound.script === "string" ? { script: bound.script } : {}),
+    };
+    if (stableJson(boundExecOnly) !== stableJson(req.args)) throw mismatch(req.operationId, "arguments");
     if ((call.descriptor.networkNeed ?? "") !== req.networkNeed) throw mismatch(req.operationId, "network scope");
     if ((call.descriptor.execMode ?? "") !== req.execMode) throw mismatch(req.operationId, "exec mode");
+    // The timeout is part of the effective operation (it bounds how long the
+    // isolated workload may run), so it is bound into the authorized args and
+    // re-checked here. An unbound timeout would let a caller dispatch a longer
+    // run than the one that was approved.
+    if ((typeof bound.timeoutMs === "number" ? bound.timeoutMs : DEFAULT_BOUND_TIMEOUT_MS) !== req.timeoutMs) {
+      throw mismatch(req.operationId, "timeout");
+    }
     return this.runtime.exec(req);
   }
 

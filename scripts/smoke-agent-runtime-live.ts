@@ -231,7 +231,9 @@ async function main(): Promise<void> {
     // --- Shell-script gating --------------------------------------------------------------
     const scriptDenied = await exec("sessA", { operationId: "smoke-s1", resource: ".", args: { script: "echo no" }, networkNeed: "none", execMode: "shell-script", grantId: gA });
     check("shell-script via grant refused", scriptDenied.json.error === "GRANT_OUT_OF_SCOPE");
-    const scriptApproval = await approve({ operationId: "smoke-s2", projectId: "demo", agentSessionId: "sessA", action: "exec", resource: ".", args: { script: "echo script-ok" }, networkNeed: "none", execMode: "shell-script" });
+    // The approval binds the complete effective operation, including the
+    // timeout the handler will bind by default (see DEFAULT_BOUND_TIMEOUT_MS).
+    const scriptApproval = await approve({ operationId: "smoke-s2", projectId: "demo", agentSessionId: "sessA", action: "exec", resource: ".", args: { script: "echo script-ok", timeoutMs: 60_000 }, networkNeed: "none", execMode: "shell-script" });
     const scriptOk = await exec("sessA", { operationId: "smoke-s2", resource: ".", args: { script: "echo script-ok" }, networkNeed: "none", execMode: "shell-script", approval: scriptApproval });
     check("shell-script via exact approval runs", scriptOk.json.outcome?.kind === "completed");
 

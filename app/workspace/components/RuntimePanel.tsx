@@ -15,9 +15,16 @@
 import React, { useState, useCallback } from "react";
 import { TerminalPanel } from "./TerminalPanel";
 import { DevboxTerminalPanel } from "./DevboxTerminalPanel";
+import { AgentTerminalPanel } from "./AgentTerminalPanel";
 import type { OutputLine } from "@/lib/workspace/runtime";
 
-export type BottomPanelTab = "problems" | "output" | "terminal" | "ports";
+/**
+ * `terminal` is the USER's own interactive terminal (WebContainer/Devbox).
+ * `agent` is the per-agent isolated runtime session. They are separate tabs on
+ * purpose: different processes, different authorization, different input
+ * authority.
+ */
+export type BottomPanelTab = "problems" | "output" | "terminal" | "agent" | "ports";
 
 interface RuntimePanelProps {
   output: OutputLine[];
@@ -81,6 +88,14 @@ export function RuntimePanel({
           onClick={() => setActiveTab("terminal")}
         >
           TERMINAL
+        </button>
+        <button
+          className={`ptab ${activeTab === "agent" ? "active" : ""}`}
+          role="tab"
+          aria-selected={activeTab === "agent"}
+          onClick={() => setActiveTab("agent")}
+        >
+          AGENT
         </button>
         <button
           className={`ptab ${activeTab === "ports" ? "active" : ""}`}
@@ -186,6 +201,15 @@ export function RuntimePanel({
         ) : (
           <TerminalPanel active={activeTab === "terminal"} />
         )}
+      </div>
+
+      {/* AGENT Pane — per-agent isolated runtime session, distinct from TERMINAL */}
+      <div
+        className={`panel-body ${activeTab === "agent" ? "active" : ""}`}
+        data-pane="agent"
+        style={{ height: "100%", overflow: "hidden" }}
+      >
+        <AgentTerminalPanel projectId={projectId} active={activeTab === "agent"} />
       </div>
 
       {/* PORTS Pane */}

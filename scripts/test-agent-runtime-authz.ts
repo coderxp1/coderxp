@@ -400,7 +400,7 @@ async function main(): Promise<void> {
 
       const approval = await issueApproval(fx, TOKEN_A, {
         operationId: "op-s2", projectId: "demo", agentSessionId: "sessA", action: "exec",
-        resource: ".", args: { script: "echo hi" }, networkNeed: "none", execMode: "shell-script",
+        resource: ".", args: { script: "echo hi", timeoutMs: 60_000 }, networkNeed: "none", execMode: "shell-script",
       });
       const pending = handleExec(fx.ctx, post("/exec", { operationId: "op-s2", resource: "", args: { script: "echo hi" }, networkNeed: "none", execMode: "shell-script", approval }, TOKEN_A), "sessA");
       await waitFor(() => fx.children.length >= 1, "shell-script child spawn");
@@ -410,9 +410,11 @@ async function main(): Promise<void> {
       assert.equal(allowed.json.outcome.kind, "completed");
 
       // argv approval cannot be retargeted to shell-script.
+      // Bound with the same timeout so the mismatch below is proven to come from
+      // the exec-mode/argument retarget, not from an incidental timeout change.
       const argvApproval = await issueApproval(fx, TOKEN_A, {
         operationId: "op-s3", projectId: "demo", agentSessionId: "sessA", action: "exec",
-        resource: ".", args: { argv: ["echo"] }, networkNeed: "none", execMode: "argv",
+        resource: ".", args: { argv: ["echo"], timeoutMs: 60_000 }, networkNeed: "none", execMode: "argv",
       });
       const retarget = await read(await handleExec(fx.ctx, post("/exec", { operationId: "op-s3", resource: "", args: { script: "echo" }, networkNeed: "none", execMode: "shell-script", approval: argvApproval }, TOKEN_A), "sessA"));
       assert.equal(retarget.json.error, "APPROVAL_MISMATCH");

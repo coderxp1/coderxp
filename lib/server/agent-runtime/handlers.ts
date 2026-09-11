@@ -12,7 +12,7 @@ import { authorize, type AuthorizeDeps } from "../authorization/enforce";
 import { validateDescriptor } from "../authorization/policy";
 import { AuthorizationError } from "../authorization/types";
 import { SESSION_COOKIE_NAME } from "../auth";
-import type { AuthorizedRuntime } from "./authorized-provider";
+import { boundExecRequest, DEFAULT_BOUND_TIMEOUT_MS, type AuthorizedRuntime } from "./authorized-provider";
 import { projectExecOutcome, projectSessionStatus, projectStreamFrame } from "./projection";
 import type { SessionRuntime } from "./provider";
 import type { RuntimeSessionRegistry } from "./sessions";
@@ -309,26 +309,30 @@ export async function handleExec(ctx: RuntimeContext, req: Request, sessionId: s
     await ctx.runtime.init();
     const body = await readBody(req);
     const resource = typeof body.resource === "string" && body.resource !== "" ? body.resource : ".";
+    const rawArgs = (body.args ?? {}) as { argv?: string[]; script?: string };
+    const timeoutMs = typeof body.timeoutMs === "number" ? body.timeoutMs : DEFAULT_BOUND_TIMEOUT_MS;
+    // The COMPLETE effective operation is bound: executable arguments, the
+    // working directory (resource), network scope, exec capability, and the
+    // timeout that bounds the isolated workload. Nothing dispatchable is left
+    // outside the binding.
     const call = await authorizeCall(ctx, req, {
       operationId: body.operationId,
       projectId: projectForSession(ctx, sessionId),
       agentSessionId: sessionId,
       action: "exec",
       resource,
-      args: body.args,
+      args: {
+        ...(Array.isArray(rawArgs.argv) ? { argv: rawArgs.argv } : {}),
+        ...(typeof rawArgs.script === "string" ? { script: rawArgs.script } : {}),
+        timeoutMs,
+      },
       networkNeed: body.networkNeed,
       execMode: body.execMode,
     }, body);
-    const outcome = await ctx.authorized.exec(call, {
-      operationId: call.descriptor.operationId,
-      projectId: call.descriptor.projectId,
-      agentSessionId: sessionId,
-      resource: call.descriptor.resource ?? "",
-      args: (body.args ?? {}) as { argv?: string[]; script?: string },
-      execMode: body.execMode as "argv" | "shell-script",
-      networkNeed: body.networkNeed as "none" | "loopback" | "external",
-      timeoutMs: typeof body.timeoutMs === "number" ? body.timeoutMs : 60_000,
-    });
+    // Dispatch is DERIVED from the authorized descriptor only — never re-read
+    // from the request body — so the executed operation is by construction the
+    // one that was authorized. AuthorizedRuntime.exec re-asserts equality.
+    const outcome = await ctx.authorized.exec(call, boundExecRequest(call, sessionId));
     return json({ ok: true, outcome: projectExecOutcome(outcome) });
   } catch (err) {
     return toErrorResponse(err);
