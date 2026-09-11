@@ -99,7 +99,11 @@ This revision (render verification, committed on top of `9fb6848`):
  155    0  scripts/test-agent-terminal-render.ts               (new)
    1    1  package.json        (wires the render suite into npm test)
   42   12  review/runtime-terminal-slice/final-evidence-bundle.md
+   1    1  review/runtime-terminal-slice/SHA256SUMS  (refreshed for this revision)
 ```
+
+Verified against `git diff --numstat 9fb6848..0aee5ae`, which lists exactly
+these four files.
 
 `app/layout.tsx` is **not** in this list and has not been modified at any point
 in the slice — verified by `git diff --name-only 5640a84 HEAD -- app/layout.tsx`
@@ -114,22 +118,26 @@ All re-run this session on the recovered tree at `f346ee6`, node v22.22.3.
 | # | Command | Exit |
 |---|---|---|
 | 1 | `npx tsc --noEmit` | **0** |
-| 2 | `npx eslint` on the nine slice files | **0** (zero output lines) |
+| 2 | `npx eslint` on the ten slice files | **0** (zero output lines) |
 | 3 | `npm test` (full aggregate chain) | **0** — 936 `[PASS]` lines |
 | 4 | `npx tsx scripts/smoke-agent-runtime-live.ts` | **0** — `pass=32 fail=0` |
 | 5 | `npx tsx scripts/test-agent-terminal-render.ts` | **0** — 5/5 sections |
 | 6 | `npm run build` (unmodified) | **1** — see §9 |
 | 7 | `npm ci` (rebuild after rollback) | 0 — `node-pty` rebuilt from source |
 
-The nine linted files: `lib/workspace/agent-runtime-client.ts`,
+The ten linted files: `lib/workspace/agent-runtime-client.ts`,
 `app/workspace/components/AgentTerminalPanel.tsx`,
 `app/workspace/components/RuntimePanel.tsx`,
 `lib/server/agent-runtime/authorized-provider.ts`,
 `lib/server/agent-runtime/handlers.ts`,
 `scripts/test-agent-runtime-binding.ts`,
 `scripts/test-agent-terminal-client.ts`,
+`scripts/test-agent-terminal-render.ts`,
 `scripts/test-agent-runtime-authz.ts`,
 `scripts/smoke-agent-runtime-live.ts`.
+
+Both the nine-file set (as originally reported) and the ten-file set including
+the render test were run separately; both exit 0 with no output.
 
 Per-suite section counts, each run individually after the changes:
 
