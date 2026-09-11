@@ -44,23 +44,34 @@ from source; `node_modules/node-pty/build/Release/pty.node` present.
 | Evidence (initial) | `f346ee6b8b221bb20cfa768bdb992c75cfa67b32` |
 | Evidence (this bundle, first issued) | `9fb6848a830f24c82b10e612348a1027a2aeb396` |
 | Render verification | `0aee5ae25ca679a2be68d7c8370ed4d3df4b7dcd` |
-| **Evidence (this bundle, current tip)** | `a2d70a3bd85631e2b529d70aa0f13a9b35174869` |
 | Branch | `arena/01a091cd-coderxp` |
 | Iteration runtime | **node v22.22.3 — iteration evidence only** |
 
-Full commit chain above base, oldest first (`git log --format=%H 4f84639..HEAD`):
+This file deliberately does **not** record a "current tip" SHA. Any such value
+is falsified by the very commit that writes it, so an earlier revision of this
+table claimed `a2d70a3` as the tip while the tree was already at `30bd274`.
+The evidence SHA is therefore *defined*, not transcribed:
+
+> The evidence SHA is the commit on `arena/01a091cd-coderxp` that contains this
+> file — obtain it with `git log -1 --format=%H -- \
+> review/runtime-terminal-slice/final-evidence-bundle.md`.
+
+`SHA256SUMS` in this directory is the authoritative integrity record for the
+bundle text itself and is stable across that ambiguity.
+
+Commit chain above base, oldest first (`git log --format=%H 4f84639..HEAD`),
+with the bundle's own amendments marked:
 
 ```
 2e39b88b3844fac9444a403a291dd6ccc0fc1f06  implementation
 f346ee6b8b221bb20cfa768bdb992c75cfa67b32  evidence + transcript + checksums
 9fb6848a830f24c82b10e612348a1027a2aeb396  this bundle, first issued
 0aee5ae25ca679a2be68d7c8370ed4d3df4b7dcd  React render verification
-a2d70a3bd85631e2b529d70aa0f13a9b35174869  two bundle corrections  <- current tip
+a2d70a3bd85631e2b529d70aa0f13a9b35174869  two bundle corrections
 ```
 
-The tip moves each time this file is amended, so `SHA256SUMS` in this directory
-is the authoritative integrity record for the bundle text itself; the SHA above
-is current as of the commit that introduced it.
+Commits after `a2d70a3` are further amendments to this file and are listed by
+the `git log` command above rather than hard-coded here.
 
 PR #1, re-verified this session:
 
