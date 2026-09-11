@@ -4,6 +4,7 @@ import {
   verifyPassword,
   updateAdminPassword,
   ADMIN_CONFIG,
+  SESSION_COOKIE_NAME,
 } from "@/lib/server/auth";
 
 export const runtime = "nodejs";
@@ -11,10 +12,9 @@ export const dynamic = "force-dynamic";
 
 /**
  * Authenticated password update endpoint.
- * Requires:
- * 1. Valid session cookie or Authorization header.
- * 2. Current password verification.
- * 3. New password of at least 8 characters.
+ * Requires valid session, current password, and new password >= 8 chars.
+ * Persists first, bumps credential generation (invalidates sessions),
+ * and clears the session cookie so the client must re-authenticate.
  */
 export async function POST(req: NextRequest): Promise<Response> {
   try {
@@ -44,7 +44,6 @@ export async function POST(req: NextRequest): Promise<Response> {
       );
     }
 
-    // Verify current password against stored password or hash
     const isValidCurrent = verifyPassword(currentPassword, ADMIN_CONFIG.password);
     if (!isValidCurrent) {
       return NextResponse.json(
@@ -53,19 +52,34 @@ export async function POST(req: NextRequest): Promise<Response> {
       );
     }
 
-    // Update in-memory password with PBKDF2 hash
-    const newHash = updateAdminPassword(newPassword);
+    updateAdminPassword(newPassword);
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       ok: true,
-      message: "Password updated successfully with PBKDF2 hashing.",
+      message: "Password updated successfully. Please sign in again.",
       algorithm: "pbkdf2-sha512",
       iterations: 100000,
+      sessionsInvalidated: true,
     });
-  } catch (err: any) {
-    return NextResponse.json(
-      { ok: false, error: err.message || "Failed to change password." },
-      { status: 500 },
-    );
+
+    response.cookies.set({
+      name: SESSION_COOKIE_NAME,
+      value: "",
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 0,
+    });
+
+    return response;
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : "Failed to change password.";
+    const safe =
+      message.includes("persist") || message.includes("verify persisted")
+        ? message
+        : "Failed to change password.";
+    return NextResponse.json({ ok: false, error: safe }, { status: 500 });
   }
 }
