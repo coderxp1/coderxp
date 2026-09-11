@@ -5,6 +5,8 @@ import {
   updateAdminPassword,
   ADMIN_CONFIG,
   SESSION_COOKIE_NAME,
+  getCredentialGeneration,
+  StaleCredentialChangeError,
 } from "@/lib/server/auth";
 
 export const runtime = "nodejs";
@@ -13,8 +15,9 @@ export const dynamic = "force-dynamic";
 /**
  * Authenticated password update endpoint.
  * Requires valid session, current password, and new password >= 8 chars.
- * Persists first, bumps credential generation (invalidates sessions),
- * and clears the session cookie so the client must re-authenticate.
+ * Delegates to updateAdminPassword (the sole credential-change entry point),
+ * which serializes overlapping updates, revalidates generation and the current
+ * password, persists, then activates. Existing sessions are invalidated.
  */
 export async function POST(req: NextRequest): Promise<Response> {
   try {
@@ -44,6 +47,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       );
     }
 
+    const expectedGeneration = getCredentialGeneration();
     const isValidCurrent = verifyPassword(currentPassword, ADMIN_CONFIG.password);
     if (!isValidCurrent) {
       return NextResponse.json(
@@ -52,7 +56,10 @@ export async function POST(req: NextRequest): Promise<Response> {
       );
     }
 
-    updateAdminPassword(newPassword);
+    await updateAdminPassword(newPassword, {
+      currentPassword,
+      expectedGeneration,
+    });
 
     const response = NextResponse.json({
       ok: true,
@@ -74,8 +81,14 @@ export async function POST(req: NextRequest): Promise<Response> {
 
     return response;
   } catch (err: unknown) {
+    if (err instanceof StaleCredentialChangeError) {
+      return NextResponse.json({ ok: false, error: err.message }, { status: 409 });
+    }
     const message =
       err instanceof Error ? err.message : "Failed to change password.";
+    if (message === "Current password does not match.") {
+      return NextResponse.json({ ok: false, error: message }, { status: 403 });
+    }
     const safe =
       message.includes("persist") || message.includes("verify persisted")
         ? message

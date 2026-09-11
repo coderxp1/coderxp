@@ -113,7 +113,10 @@ async function main() {
 
   console.log("\n--- 4. Session invalidation after password change ---");
   const before = token;
-  auth.updateAdminPassword("post-change-password-2026xx");
+  await auth.updateAdminPassword("post-change-password-2026xx", {
+    currentPassword: "disposable-session-test-pass-2026",
+    expectedGeneration: auth.getCredentialGeneration(),
+  });
   assert.equal(auth.verifySessionToken(before).valid, false);
   const after = auth.createSessionToken(auth.ADMIN_CONFIG.userId, auth.ADMIN_CONFIG.email);
   assert.equal(auth.verifySessionToken(after).valid, true);

@@ -7,6 +7,7 @@
  * - Separately configured session signing secret (AUTH_SESSION_SECRET only).
  * - Admin credential source precedence is defined and fails closed.
  * - Sessions carry a credential generation; password change invalidates prior sessions.
+ * - Password changes are serialized in-process and revalidate generation before commit.
  * - Constant-time password verification (PBKDF2-SHA512).
  * - Multi-transport session verification (cookie, Bearer, x-coderxp-session).
  */
@@ -47,6 +48,8 @@ function getSessionSecret(): string {
 export function __resetAuthSecretCacheForTests(): void {
   _sessionSecret = null;
   _credentialState = null;
+  _passwordChangeTail = Promise.resolve();
+  _failNextPasswordPersist = false;
 }
 
 export const AUTH_PASSWORD_FILE =
@@ -61,6 +64,45 @@ interface CredentialState {
 }
 
 let _credentialState: CredentialState | null = null;
+
+/** Serializes overlapping password-change transactions in this process. */
+let _passwordChangeTail: Promise<void> = Promise.resolve();
+let _failNextPasswordPersist = false;
+
+export class StaleCredentialChangeError extends Error {
+  readonly code = "STALE_CREDENTIAL_CHANGE" as const;
+  constructor(
+    message = "Stale password change rejected: credential generation has changed.",
+  ) {
+    super(message);
+    this.name = "StaleCredentialChangeError";
+  }
+}
+
+export interface PasswordChangeClaim {
+  currentPassword: string;
+  expectedGeneration: number;
+}
+
+/**
+ * Test-only: next persist attempt inside the password-change transaction fails
+ * before writing. Does not modify an already-successful password file.
+ */
+export function __failNextPasswordPersistForTests(): void {
+  _failNextPasswordPersist = true;
+}
+
+function withPasswordChangeLock<T>(fn: () => T | Promise<T>): Promise<T> {
+  const run = _passwordChangeTail.then(
+    () => fn(),
+    () => fn(),
+  );
+  _passwordChangeTail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return run;
+}
 
 function parsePasswordFileContent(content: string): CredentialState | null {
   const lines = content
@@ -287,24 +329,96 @@ export function verifyPassword(passwordAttempt: string, storedHash: string): boo
   return crypto.timingSafeEqual(derivedBuf, expectedBuf);
 }
 
-export function updateAdminPassword(newPasswordPlaintext: string): string {
+export async function updateAdminPassword(
+  newPasswordPlaintext: string,
+  claim: PasswordChangeClaim,
+): Promise<string> {
   if (!newPasswordPlaintext || newPasswordPlaintext.length < 8) {
     throw new Error("New password must be at least 8 characters.");
   }
+  if (
+    !claim ||
+    typeof claim.expectedGeneration !== "number" ||
+    !Number.isInteger(claim.expectedGeneration) ||
+    typeof claim.currentPassword !== "string" ||
+    claim.currentPassword.length === 0
+  ) {
+    throw new Error(
+      "Password change requires currentPassword and expectedGeneration.",
+    );
+  }
 
-  const newHash = hashPassword(newPasswordPlaintext);
+  return withPasswordChangeLock(() =>
+    applyAdminPasswordChange(newPasswordPlaintext, claim),
+  );
+}
+
+/**
+ * Sole credential-change transaction. Must run under withPasswordChangeLock.
+ * Revalidates generation and current password against the active credential
+ * before hashing, persisting, verifying the file, and activating.
+ */
+function applyAdminPasswordChange(
+  newPasswordPlaintext: string,
+  claim: PasswordChangeClaim,
+): string {
   const current = getCredentialState();
+  if (current.generation !== claim.expectedGeneration) {
+    throw new StaleCredentialChangeError();
+  }
+  if (!verifyPassword(claim.currentPassword, current.passwordHash)) {
+    throw new Error("Current password does not match.");
+  }
+
   const next: CredentialState = {
-    passwordHash: newHash,
+    passwordHash: hashPassword(newPasswordPlaintext),
     generation: current.generation + 1,
   };
+
+  persistCredentialsStrict(next);
+
+  try {
+    const readBack = fs.readFileSync(AUTH_PASSWORD_FILE, "utf8");
+    const parsed = parsePasswordFileContent(readBack);
+    if (
+      !parsed ||
+      parsed.passwordHash !== next.passwordHash ||
+      parsed.generation !== next.generation
+    ) {
+      throw new Error(
+        "Failed to verify persisted password hash. Password was not activated.",
+      );
+    }
+  } catch (err) {
+    if (
+      err instanceof Error &&
+      err.message.includes("Failed to verify persisted password hash")
+    ) {
+      throw err;
+    }
+    throw new Error(
+      "Failed to verify persisted password hash. Password was not activated.",
+    );
+  }
+
+  _credentialState = next;
+  return next.passwordHash;
+}
+
+function persistCredentialsStrict(state: CredentialState): void {
+  if (_failNextPasswordPersist) {
+    _failNextPasswordPersist = false;
+    throw new Error(
+      "Failed to persist new password hash. Password was not changed.",
+    );
+  }
 
   const dir = path.dirname(AUTH_PASSWORD_FILE);
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  const body = `${next.passwordHash}\n${next.generation}\n`;
-  const tmp = `${AUTH_PASSWORD_FILE}.${process.pid}.${Date.now()}.tmp`;
+  const body = `${state.passwordHash}\n${state.generation}\n`;
+  const tmp = `${AUTH_PASSWORD_FILE}.${process.pid}.${Date.now()}.${crypto.randomBytes(4).toString("hex")}.tmp`;
   try {
     fs.writeFileSync(tmp, body, { encoding: "utf8", mode: 0o600 });
     fs.renameSync(tmp, AUTH_PASSWORD_FILE);
@@ -314,23 +428,10 @@ export function updateAdminPassword(newPasswordPlaintext: string): string {
     } catch {
       // ignore
     }
-    throw new Error("Failed to persist new password hash. Password was not changed.");
-  }
-
-  try {
-    const readBack = fs.readFileSync(AUTH_PASSWORD_FILE, "utf8");
-    const parsed = parsePasswordFileContent(readBack);
-    if (!parsed || parsed.passwordHash !== next.passwordHash) {
-      throw new Error("Password file verification after write failed.");
-    }
-  } catch {
     throw new Error(
-      "Failed to verify persisted password hash. Password was not activated.",
+      "Failed to persist new password hash. Password was not changed.",
     );
   }
-
-  _credentialState = next;
-  return newHash;
 }
 
 export function verifyAdminCredentials(

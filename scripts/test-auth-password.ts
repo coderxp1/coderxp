@@ -53,7 +53,10 @@ async function main() {
   const oldToken = auth.createSessionToken(auth.ADMIN_CONFIG.userId, auth.ADMIN_CONFIG.email);
   assert.equal(auth.verifySessionToken(oldToken).valid, true);
 
-  const newHash = auth.updateAdminPassword("new-authenticated-password-2026");
+  const newHash = await auth.updateAdminPassword("new-authenticated-password-2026", {
+    currentPassword: "disposable-test-password-2026",
+    expectedGeneration: genBefore,
+  });
   assert.ok(newHash.startsWith("pbkdf2$100000$"));
   assert.equal(
     auth.verifyAdminCredentials("coderxpadmin", "new-authenticated-password-2026"),
@@ -104,7 +107,10 @@ async function main() {
   fs.mkdirSync(PASSWORD_FILE, { recursive: true });
   let threw = false;
   try {
-    auth.updateAdminPassword("should-not-activate-password-xx");
+    await auth.updateAdminPassword("should-not-activate-password-xx", {
+      currentPassword: "new-authenticated-password-2026",
+      expectedGeneration: genBeforeFail,
+    });
   } catch {
     threw = true;
   }
@@ -118,6 +124,81 @@ async function main() {
   );
   fs.rmSync(PASSWORD_FILE, { recursive: true, force: true });
   console.log("[PASS] Persistence failure leaves prior credential active.");
+
+  console.log("--- 8. Overlapping password changes: serialize, reject stale, persist-fail isolation ---");
+  const overlapCurrent = "new-authenticated-password-2026";
+  const overlapGen = auth.getCredentialGeneration();
+  const overlapWinner = "overlap-winner-password-2026";
+  const overlapStale = "overlap-stale-password-2026";
+  const sessionBeforeOverlap = auth.createSessionToken(
+    auth.ADMIN_CONFIG.userId,
+    auth.ADMIN_CONFIG.email,
+  );
+  assert.equal(auth.verifySessionToken(sessionBeforeOverlap).valid, true);
+
+  const winnerClaim = {
+    currentPassword: overlapCurrent,
+    expectedGeneration: overlapGen,
+  };
+  const first = auth.updateAdminPassword(overlapWinner, winnerClaim);
+  const queued = auth.updateAdminPassword(overlapStale, { ...winnerClaim });
+  const settled = await Promise.allSettled([first, queued]);
+
+  assert.equal(settled[0].status, "fulfilled", "first overlapping change must commit");
+  assert.equal(settled[1].status, "rejected", "queued overlapping change must not commit");
+  if (settled[1].status === "rejected") {
+    assert.equal(
+      settled[1].reason instanceof auth.StaleCredentialChangeError,
+      true,
+      "queued change must be rejected as stale generation",
+    );
+  }
+
+  const activeHash = auth.ADMIN_CONFIG.password;
+  const activeGen = auth.getCredentialGeneration();
+  assert.equal(activeGen, overlapGen + 1);
+  assert.equal(auth.verifyAdminCredentials("coderxpadmin", overlapWinner), true);
+  assert.equal(auth.verifyAdminCredentials("coderxpadmin", overlapStale), false);
+  assert.equal(auth.verifyAdminCredentials("coderxpadmin", overlapCurrent), false);
+  assert.ok(fs.existsSync(PASSWORD_FILE));
+  const persisted = fs.readFileSync(PASSWORD_FILE, "utf8");
+  const persistedLines = persisted.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  assert.equal(persistedLines[0], activeHash, "persisted hash must match active hash");
+  assert.equal(Number(persistedLines[1]), activeGen, "persisted generation must match active generation");
+  assert.equal(auth.verifySessionToken(sessionBeforeOverlap).valid, false);
+  const sessionAfterOverlap = auth.createSessionToken(
+    auth.ADMIN_CONFIG.userId,
+    auth.ADMIN_CONFIG.email,
+  );
+  assert.equal(auth.verifySessionToken(sessionAfterOverlap).valid, true);
+  console.log("[PASS] Overlap: active and persisted agree; stale queued change cannot overwrite.");
+
+  const hashAfterOverlap = auth.ADMIN_CONFIG.password;
+  const genAfterOverlap = auth.getCredentialGeneration();
+  const fileAfterOverlap = fs.readFileSync(PASSWORD_FILE, "utf8");
+  auth.__failNextPasswordPersistForTests();
+  let persistThrew = false;
+  try {
+    await auth.updateAdminPassword("should-not-activate-after-success-xx", {
+      currentPassword: overlapWinner,
+      expectedGeneration: genAfterOverlap,
+    });
+  } catch (err) {
+    persistThrew = true;
+    const msg = err instanceof Error ? err.message : String(err);
+    assert.match(msg, /persist/i);
+  }
+  assert.equal(persistThrew, true, "injected persist failure must throw");
+  assert.equal(auth.ADMIN_CONFIG.password, hashAfterOverlap, "successful change must not roll back");
+  assert.equal(auth.getCredentialGeneration(), genAfterOverlap, "generation must stay at successful change");
+  assert.equal(fs.readFileSync(PASSWORD_FILE, "utf8"), fileAfterOverlap, "password file must be unchanged");
+  assert.equal(auth.verifyAdminCredentials("coderxpadmin", overlapWinner), true);
+  assert.equal(
+    auth.verifyAdminCredentials("coderxpadmin", "should-not-activate-after-success-xx"),
+    false,
+  );
+  assert.equal(auth.verifySessionToken(sessionAfterOverlap).valid, true);
+  console.log("[PASS] Persist failure after success neither activates proposal nor rolls back.");
 
   try {
     fs.rmSync(TEST_DIR, { recursive: true, force: true });

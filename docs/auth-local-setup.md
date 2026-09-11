@@ -48,6 +48,10 @@ npx tsx scripts/test-devbox-broker-auth.ts
 - New password is written to `AUTH_PASSWORD_FILE` **before** it is activated in memory.
 - Credential generation is incremented; existing sessions are rejected.
 - The change-password API clears the session cookie; the client must sign in again.
+- Overlapping password changes are serialized by a shared in-process guard on
+  `updateAdminPassword` (the only credential-change entry point). Callers supply
+  the generation they observed; that generation and the current password are
+  revalidated against the active credential before persist/activation.
 
 ## Environment-only provisioning and password changes
 
@@ -64,33 +68,47 @@ After a successful change, the hash and credential generation are stored in
 - If the file is missing but `AUTH_ADMIN_PASSWORD` is still set, the env value is
   used again at generation 1 — sessions from a previous process that had bumped
   generation would not match unless the file is retained. **Keep the password file
-  durable across restarts** in any multi-instance or restart-heavy deployment.
+  durable across restarts.** This does not make multi-process authentication safe.
 
 ## Supported process model (credential generation)
 
-**Supported:** a single Node process (or a single writer of `AUTH_PASSWORD_FILE`)
-owns password changes. Session verification in that process always loads the
-current generation from the password file (or in-memory state after a successful
-change in the same process).
+**Supported:** one authentication process handling both credential changes and
+session verification. That process is the only reader and writer of the active
+credential generation. After a successful change, in-memory state and
+`AUTH_PASSWORD_FILE` are updated in the same transaction; subsequent session
+verification in that process uses the new generation.
 
-**Not supported without additional work:** multiple concurrent authentication
-processes that each keep an in-memory credential-generation cache. A password
-change in process A updates the file and invalidates sessions for subsequent
-verifications in A; process B may continue accepting sessions minted under the
-old generation until B restarts or clears its credential cache. There is no
-cross-process cache invalidation signal.
+**Not supported:** more than one authentication process. A “single writer” of
+`AUTH_PASSWORD_FILE` with additional processes that verify sessions is **not**
+a supported model: those readers can keep a stale in-memory generation and
+continue accepting sessions after a password change. There is no cross-process
+refresh or cache-invalidation signal. Do not run multiple authentication
+processes against this implementation.
 
-Overlapping `updateAdminPassword` calls: only one writer should run. Concurrent
-writers rely on temp-file + rename for a single file write, but two writers can
-still race on generation numbers. Treat concurrent password-change requests as
-unsupported; serialize them at the application boundary (single admin operator
-or a single API instance handling change-password).
+Overlapping asynchronous password changes in the supported process are enforced
+in code, not by operator convention:
 
-Committed coverage:
-- Persistence failure leaves prior credential active (`test-auth-password`)
-- Generation reload after simulated restart (`test-auth-password`)
+- Guard: `withPasswordChangeLock` + `applyAdminPasswordChange` in
+  `lib/server/auth.ts` (`updateAdminPassword`). The HTTP route
+  `app/api/auth/change-password/route.ts` is not a second writer; it only
+  calls that function.
+- The transaction revalidates `expectedGeneration` and the current password
+  against the active credential, then persists, verifies the file, and only
+  then activates the new hash and generation.
+- A queued caller that still holds a prior generation is rejected
+  (`StaleCredentialChangeError`) and cannot overwrite a newer successful change.
+- A persistence failure does not activate its proposed credential and does not
+  roll back a previously successful change.
+
+Committed coverage (`scripts/test-auth-password.ts`):
+- Persistence failure leaves prior credential active
+- Generation reload after simulated restart
 - Env-only provisioning requires a successful file write before activation
-  (`updateAdminPassword` throws otherwise; documented above)
+- Overlapping updates: persisted and active generation/hash agree after
+  completion; a stale queued request cannot overwrite a newer successful
+  change; a failed persistence attempt after that success neither activates
+  its proposal nor rolls back the successful change
+
 
 ## Migration from the previous baseline
 
