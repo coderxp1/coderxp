@@ -41,10 +41,26 @@ from source; `node_modules/node-pty/build/Release/pty.node` present.
 |---|---|
 | Base (slice starts here) | `4f8463953fb01a3e9eb7e4694e35f071b1f05725` |
 | Implementation | `2e39b88b3844fac9444a403a291dd6ccc0fc1f06` |
-| Evidence (previous revision) | `f346ee6b8b221bb20cfa768bdb992c75cfa67b32` |
-| Evidence (this bundle) | see commit containing this file |
+| Evidence (initial) | `f346ee6b8b221bb20cfa768bdb992c75cfa67b32` |
+| Evidence (this bundle, first issued) | `9fb6848a830f24c82b10e612348a1027a2aeb396` |
+| Render verification | `0aee5ae25ca679a2be68d7c8370ed4d3df4b7dcd` |
+| **Evidence (this bundle, current tip)** | `a2d70a3bd85631e2b529d70aa0f13a9b35174869` |
 | Branch | `arena/01a091cd-coderxp` |
 | Iteration runtime | **node v22.22.3 — iteration evidence only** |
+
+Full commit chain above base, oldest first (`git log --format=%H 4f84639..HEAD`):
+
+```
+2e39b88b3844fac9444a403a291dd6ccc0fc1f06  implementation
+f346ee6b8b221bb20cfa768bdb992c75cfa67b32  evidence + transcript + checksums
+9fb6848a830f24c82b10e612348a1027a2aeb396  this bundle, first issued
+0aee5ae25ca679a2be68d7c8370ed4d3df4b7dcd  React render verification
+a2d70a3bd85631e2b529d70aa0f13a9b35174869  two bundle corrections  <- current tip
+```
+
+The tip moves each time this file is amended, so `SHA256SUMS` in this directory
+is the authoritative integrity record for the bundle text itself; the SHA above
+is current as of the commit that introduced it.
 
 PR #1, re-verified this session:
 
@@ -93,17 +109,30 @@ Evidence commit `f346ee6` (`git diff --numstat 2e39b88..f346ee6`):
 
 Full slice `4f84639..f346ee6`: **14 files changed, 2038 insertions, 19 deletions.**
 
-This revision (render verification, committed on top of `9fb6848`):
+Revisions after `f346ee6`, with exact per-commit numstat:
 
+`9fb6848` — bundle first issued
+```
+   2    0  review/runtime-terminal-slice/SHA256SUMS
+ 321    0  review/runtime-terminal-slice/final-evidence-bundle.md
+  41    0  review/runtime-terminal-slice/smoke-transcript-20260911T2029Z.log
+```
+
+`0aee5ae` — React render verification
 ```
  155    0  scripts/test-agent-terminal-render.ts               (new)
    1    1  package.json        (wires the render suite into npm test)
   42   12  review/runtime-terminal-slice/final-evidence-bundle.md
-   1    1  review/runtime-terminal-slice/SHA256SUMS  (refreshed for this revision)
+   1    1  review/runtime-terminal-slice/SHA256SUMS
 ```
 
-Verified against `git diff --numstat 9fb6848..0aee5ae`, which lists exactly
-these four files.
+`a2d70a3` — two bundle corrections found on re-verification
+```
+  10    2  review/runtime-terminal-slice/final-evidence-bundle.md
+   1    1  review/runtime-terminal-slice/SHA256SUMS
+```
+
+Plus the revision that adds the commit chain recorded in §1 (this edit).
 
 `app/layout.tsx` is **not** in this list and has not been modified at any point
 in the slice — verified by `git diff --name-only 5640a84 HEAD -- app/layout.tsx`
