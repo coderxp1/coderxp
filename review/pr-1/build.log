@@ -1,0 +1,149 @@
+=== BUILD START 2026-09-11T02:04:20Z ===
+cgroup.current=2310541312
+cgroup.events=low 0 high 0 max 0 oom 0 oom_kill 0 oom_group_kill 0 
+MemAvailable=3660708 kB
+
+> coderxp@0.1.0 build
+> next build
+
+▲ Next.js 16.3.0 (Turbopack)
+✓ Running next.config.mjs took 17ms
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 11.7s
+  Running TypeScript ...
+  Finished TypeScript in 6.8s ...
+  Collecting page data using 1 worker ...
+  Generating static pages using 1 worker (0/32) ...
+  Generating static pages using 1 worker (8/32) 
+  Generating static pages using 1 worker (16/32) 
+  Generating static pages using 1 worker (24/32) 
+✓ Generating static pages using 1 worker (32/32) in 523ms
+Turbopack build encountered 3 warnings:
+./lib/server/auth.ts:133:22
+Warning: Dynamic filesystem access causes tracing of the whole project
+  [90m131 |[0m [90m */[0m
+  [90m132 |[0m [36mfunction[0m loadCredentialState(): [33mCredentialState[0m {
+[33m[1m>[0m [90m133 |[0m   [36mconst[0m fileExists = fs.existsSync([33mAUTH_PASSWORD_FILE[0m);
+  [90m    |[0m                      [33m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m134 |[0m
+  [90m135 |[0m   [36mif[0m (fileExists) {
+  [90m136 |[0m     [36mlet[0m content: string;
+
+Static analysis determined that this filesystem access causes the whole project to be traced and included in the output.
+This is usually unintentional and leads to all source files (including the public folder) to be deployed as part of the server code.
+This can slow down deployments or lead to failures when size limits are exceeded.
+To resolve this, you can
+- make sure the path is statically scoped to some subfolder, for example path.join(process.cwd(), 'data', bar), or
+- only use them in development, or
+- opt out by adding an ignore comment to the highlighted call: fs.existsSync(/*turbopackIgnore: true*/ ...), or
+- remove them.
+
+Import trace:
+  App Route:
+    ./lib/server/auth.ts
+    ./app/api/preview/link/route.ts
+
+
+./lib/server/auth.ts:138:17
+Warning: Dynamic filesystem access causes tracing of the whole project
+  [90m136 |[0m     [36mlet[0m content: string;
+  [90m137 |[0m     [36mtry[0m {
+[33m[1m>[0m [90m138 |[0m       content = fs.readFileSync([33mAUTH_PASSWORD_FILE[0m, [32m"utf8"[0m);
+  [90m    |[0m                 [33m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m139 |[0m     } [36mcatch[0m {
+  [90m140 |[0m       [36mthrow[0m [36mnew[0m [33mError[0m(
+  [90m141 |[0m         [32m`AUTH_PASSWORD_FILE exists but is unreadable ([0m${[33mAUTH_PASSWORD_FILE[0m[32m}). Refusing to...[0m
+
+Static analysis determined that this filesystem access causes the whole project to be traced and included in the output.
+This is usually unintentional and leads to all source files (including the public folder) to be deployed as part of the server code.
+This can slow down deployments or lead to failures when size limits are exceeded.
+To resolve this, you can
+- make sure the path is statically scoped to some subfolder, for example path.join(process.cwd(), 'data', bar), or
+- only use them in development, or
+- opt out by adding an ignore comment to the highlighted call: fs.readFileSync(/*turbopackIgnore: true*/ ...), or
+- remove them.
+
+Import trace:
+  App Route:
+    ./lib/server/auth.ts
+    ./app/api/preview/link/route.ts
+
+
+./lib/server/auth.ts:381:22
+Warning: Dynamic filesystem access causes tracing of the whole project
+  [90m379 |[0m
+  [90m380 |[0m   [36mtry[0m {
+[33m[1m>[0m [90m381 |[0m     [36mconst[0m readBack = fs.readFileSync([33mAUTH_PASSWORD_FILE[0m, [32m"utf8"[0m);
+  [90m    |[0m                      [33m[1m^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^[0m
+  [90m382 |[0m     [36mconst[0m parsed = parsePasswordFileContent(readBack);
+  [90m383 |[0m     [36mif[0m (
+  [90m384 |[0m       !parsed ||
+
+Static analysis determined that this filesystem access causes the whole project to be traced and included in the output.
+This is usually unintentional and leads to all source files (including the public folder) to be deployed as part of the server code.
+This can slow down deployments or lead to failures when size limits are exceeded.
+To resolve this, you can
+- make sure the path is statically scoped to some subfolder, for example path.join(process.cwd(), 'data', bar), or
+- only use them in development, or
+- opt out by adding an ignore comment to the highlighted call: fs.readFileSync(/*turbopackIgnore: true*/ ...), or
+- remove them.
+
+Import trace:
+  App Route:
+    ./lib/server/auth.ts
+    ./app/api/preview/link/route.ts
+
+
+  Finalizing page optimization ...
+
+Route (app)
+┌ ○ /
+├ ○ /_not-found
+├ ○ /about
+├ ○ /api
+├ ƒ /api/agent/attachments
+├ ƒ /api/agent/byok
+├ ƒ /api/agent/health
+├ ƒ /api/agent/models
+├ ƒ /api/agent/stream
+├ ƒ /api/agent/tools/web-fetch
+├ ƒ /api/auth/change-password
+├ ƒ /api/auth/login
+├ ƒ /api/auth/logout
+├ ƒ /api/auth/session
+├ ƒ /api/devbox
+├ ƒ /api/devbox/approvals
+├ ƒ /api/devbox/credentials
+├ ƒ /api/devbox/events
+├ ƒ /api/devbox/fs
+├ ƒ /api/devbox/process
+├ ƒ /api/devbox/token
+├ ƒ /api/preview/link
+├ ƒ /api/preview/resolve
+├ ○ /bring-your-own-key
+├ ○ /contact
+├ ○ /cookies
+├ ○ /docs
+├ ○ /features
+├ ○ /icon.png
+├ ○ /local-models
+├ ○ /login
+├ ○ /models
+├ ○ /pricing
+├ ○ /privacy
+├ ○ /robots.txt
+├ ○ /security
+├ ○ /sitemap.xml
+├ ○ /terms
+└ ○ /workspace
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+=== BUILD END 2026-09-11T02:04:40Z exit=0 ===
+cgroup.current=2404106240
+cgroup.peak=3747991552
+cgroup.events=low 0 high 0 max 0 oom 0 oom_kill 0 oom_group_kill 0 
+MemAvailable=3446836 kB
