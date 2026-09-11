@@ -1,0 +1,1361 @@
+
+> coderxp@0.1.0 test
+> npx --no-install tsx scripts/test-orchestrator-stable-identity.ts && npx --no-install tsx scripts/test-message-normalization.ts && npx --no-install tsx scripts/test-command-safety.ts && npx --no-install tsx scripts/test-ssrf-guard.ts && npx --no-install tsx scripts/test-secret-redaction.ts && npx --no-install tsx scripts/test-byok-optional-streaming.ts && npx --no-install tsx scripts/test-byok-providers.ts && npx --no-install tsx scripts/test-byok-server-store.ts && npx --no-install tsx scripts/test-mcp-client.ts && npx --no-install tsx scripts/test-phase-a-event-store.ts && npx --no-install tsx scripts/test-phase-a-policy-engine.ts && npx --no-install tsx scripts/test-phase-a-timeline.ts && npx --no-install tsx scripts/test-devbox-broker-auth.ts && npx --no-install tsx scripts/test-devbox-process-idle.ts && npx --no-install tsx scripts/test-devbox-two-step-deletion.ts && npx --no-install tsx scripts/test-devbox-host-capacity.ts && npx --no-install tsx scripts/test-devbox-pty-secret-redaction.ts && npx --no-install tsx scripts/test-devbox-state-machine.ts && npx --no-install tsx scripts/test-devbox-compensating-controls.ts && npx --no-install tsx scripts/test-devbox-tier-gating.ts && npx --no-install tsx scripts/test-devbox-network-isolation.ts && npx --no-install tsx scripts/test-agent-permissions.ts && npx --no-install tsx scripts/test-agent-execution-runtime.ts && npx --no-install tsx scripts/test-agent-runtime-adapter.ts && npx --no-install tsx scripts/test-agent-orchestrator.ts && npx --no-install tsx scripts/test-agent-anthropic-adapter.ts && npx --no-install tsx scripts/test-agent-stream-route.ts && npx --no-install tsx scripts/test-agent-production-e2e.ts && npx --no-install tsx scripts/test-agent-logicc-provider.ts && npx --no-install tsx scripts/test-agent-logicc-adapter.ts && npx --no-install tsx scripts/test-agent-logicc-e2e.ts && npx --no-install tsx scripts/test-auth-config-fail-closed.ts && npx --no-install tsx scripts/test-auth-password.ts && npx --no-install tsx scripts/test-app-auth-session.ts && npx --no-install tsx scripts/test-live-preview.ts && npx --no-install tsx scripts/test-preview-router-isolation.ts
+
+==========================================================================
+       ORCHESTRATOR STABLE IDENTITY & LIFECYCLE REGRESSION TESTS          
+==========================================================================
+
+--- 1. Testing forced multi-render sequence (10 renders with inline callbacks) ---
+[PASS] Orchestrator instance was constructed exactly 1 time across 10 renders and disposed 0 times.
+
+--- 2. Submitting prompt after forced re-renders ---
+[PASS] Prompt successfully submitted and dispatched upstream.
+
+--- 3. Generation bump recreation test ---
+[PASS] Generation bump correctly disposed old instance and constructed new instance.
+[PASS] Unmount disposed cleanly.
+
+==========================================================================
+   SUCCESS: ALL ORCHESTRATOR STABLE IDENTITY TESTS PASSED (100%)         
+==========================================================================
+
+==========================================================================
+              MESSAGE NORMALIZATION REGRESSION TEST SUITE                 
+==========================================================================
+
+--- 1. Canonical parts format ---
+[PASS] Logicc accepted canonical parts format.
+[PASS] Anthropic accepted canonical parts format.
+
+--- 2. Content block array format (UI client) ---
+[PASS] Logicc accepted content block array format.
+[PASS] Anthropic accepted content block array format.
+
+--- 3. Plain string content format ---
+[PASS] Logicc accepted plain string content format.
+[PASS] Anthropic accepted plain string content format.
+
+==========================================================================
+       ALL MESSAGE NORMALIZATION REGRESSION TESTS PASSED (100%)           
+==========================================================================
+=== RUNNING COMMAND EXECUTION SAFETY TESTS ===
+--- 1. Safe Command Allowlist ---
+[PASS] Safe command allowlist identified correctly.
+--- 2. Destructive Command Detection ---
+[PASS] Destructive command patterns identified correctly.
+--- 3. Autonomous Mode Risk Escalation ---
+[PASS] Autonomous mode never auto-runs destructive commands.
+--- 4. Permission Controller Gate ---
+[PASS] Permission Controller evaluates effective command risk accurately.
+=== ALL COMMAND SAFETY TESTS PASSED ===
+=== RUNNING SSRF GUARD TESTS ===
+--- 1. Loopback and Localhost Blocking ---
+[PASS] Localhost and loopback IPs are blocked.
+--- 2. Cloud Metadata Endpoint Blocking ---
+[PASS] Cloud metadata endpoints are blocked.
+--- 3. Private IP Ranges ---
+[PASS] Private IP ranges are blocked.
+--- 4. Scheme Validation ---
+[PASS] Non-HTTP(S) schemes are blocked.
+--- 5. Valid Public URLs ---
+[PASS] Valid public internet URLs are accepted.
+--- 6. HTML Sanitization ---
+[PASS] HTML text sanitization verified.
+=== ALL SSRF GUARD TESTS PASSED ===
+=== RUNNING SECRET REDACTION TESTS (V2.3 EXPANDED) ===
+--- 1. GitHub Token Redaction ---
+[PASS] GitHub Classic & Fine-grained PATs redacted.
+--- 2. AI Provider Key Redaction ---
+[PASS] All AI provider API keys (Anthropic, OpenAI, OpenRouter, xAI, Hugging Face, Gemini) redacted.
+--- 3. Streaming Redactor Cross-Chunk Withholding ---
+[PASS] Streaming redactor withholds and redacts secrets split across chunk boundaries.
+=== ALL SECRET REDACTION TESTS PASSED ===
+=== RUNNING BYOK OPTIONAL STREAMING REGRESSION TESTS ===
+--- 1. Null Key in Server-Managed Mode ---
+RECEIVED EVENTS: [{"type":"turn-started","eventId":"evt-1","sequence":0,"turnId":"turn-1","requestId":"req-1","timestamp":1000},{"type":"text-delta","eventId":"evt-2","sequence":1,"turnId":"turn-1","requestId":"req-1","text":"Hello from Logicc","timestamp":1001},{"type":"turn-completed","eventId":"evt-3","sequence":2,"turnId":"turn-1","requestId":"req-1","stopReason":"end_turn","metrics":{"inputTokens":10,"outputTokens":5},"timestamp":1002}]
+[PASS] Server-managed Logicc mode streams tokens without requiring client BYOK key.
+--- 2. Provided Key Passed in Header ---
+[PASS] Client BYOK key forwarded correctly when present.
+=== ALL BYOK STREAMING REGRESSION TESTS PASSED ===
+=== RUNNING REVISION 2.3 BYOK PROVIDERS TEST ===
+--- 1. Key Masking Tests ---
+[PASS] Key masking returns …last4 as expected.
+--- 2. Key Encryption & Decryption ---
+[PASS] AES-GCM encryption & decryption round-trip verified.
+--- 3. Provider Registry Coverage ---
+[PASS] All 9 BYOK providers defined with models.
+--- 4. SSRF Guard on Custom Base URL ---
+[PASS] Custom provider endpoints gated by SSRF guard.
+=== ALL BYOK PROVIDERS TESTS PASSED ===
+=== RUNNING SERVER-SIDE BYOK SECRETS STORE & PROXY TESTS ===
+--- 1. Save & Server-Side Encryption ---
+[PASS] Full key string is not returned to client upon save.
+--- 2. Client-Bound List Payloads Non-Leak ---
+[PASS] listServerByok payload contains zero plaintext or ciphertext key leaks.
+--- 3. Server Injected Credential Retrieval ---
+[PASS] Server securely decrypts key for upstream proxy requests.
+--- 4. Live Discovery Models Population ---
+[PASS] Models populated dynamically from probe / fallback.
+--- 5. Server-Side Revocation ---
+[PASS] Revocation clears key from server store immediately.
+--- 6. SSRF Guard on Custom Base URL ---
+[PASS] Server rejects forbidden localhost base URLs for custom providers.
+=== ALL SERVER-SIDE BYOK TESTS PASSED ===
+=== RUNNING REVISION 2.3 MCP CLIENT TEST ===
+--- 1. MCP Tool Conversion ---
+[PASS] MCP tool conversion properly sets schema and execution risk.
+--- 2. SSRF Guard on MCP HTTP Endpoint ---
+[PASS] Localhost MCP server endpoint blocked by SSRF guard.
+=== ALL MCP CLIENT TESTS PASSED ===
+=== RUNNING PHASE A: HOST EVENT STORE & AUTHORITY TESTS ===
+--- 1. Monotonic Sequence Numbering ---
+[PASS] Events assigned strictly monotonic sequence numbers.
+--- 2. Secret Redaction on Event Payloads ---
+[PASS] Secrets in event payloads are automatically redacted before storage.
+--- 3. Event Querying with fromSeq ---
+[PASS] Querying from specific sequence offsets verified.
+=== ALL HOST EVENT STORE TESTS PASSED ===
+=== RUNNING PHASE A: 5-TIER ACTION POLICY & CREDENTIAL GATE TESTS ===
+--- 1. T0 Free Tier Classification ---
+[PASS] T0 actions auto-execute without approval.
+--- 2. T1 Logged Tier Classification ---
+[PASS] T1 actions auto-execute and log to timeline.
+--- 3. T2 Notify Tier Classification ---
+[PASS] Feature branch push executes at T2 with 1-click rollback.
+--- 4. T3 Approval Gate (Main Branch & Force Push) ---
+[PASS] T3 push blocked until approval; credential released securely once approved.
+--- 5. T4 Hard Gate (Billing) ---
+[PASS] T4 billing actions require typed confirmation.
+--- 6. Untrusted Context Tier Elevation ---
+[PASS] Processing untrusted input elevates T2 to T3 requiring explicit user approval.
+=== ALL 5-TIER ACTION POLICY TESTS PASSED ===
+=== RUNNING PHASE A: TIMELINE & USAGE AGGREGATION TESTS ===
+[PASS] Timeline events aggregate input and output tokens accurately.
+[PASS] T3 approval card represented as first-class timeline event.
+=== ALL TIMELINE & USAGE TESTS PASSED ===
+=== RUNNING DEVBOX BROKER WSS AUTHENTICATION TESTS ===
+--- 1. Valid Token Minting & Verification ---
+[PASS] Valid HMAC-signed token verified successfully.
+--- 2. Single-Use Replay Prevention ---
+[PASS] Consumed single-use token rejected on secondary connection attempt.
+--- 3. Cross-Project Access Rejection ---
+[PASS] Cross-user token handshake rejected immediately.
+--- 4. Tampered Signature Rejection ---
+[PASS] Tampered token signature fails validation.
+=== ALL DEVBOX BROKER AUTH TESTS PASSED ===
+=== RUNNING DEVBOX PROCESS-AWARE IDLE DETECTION TESTS ===
+--- 1. Fresh Container State ---
+[PASS] Fresh session marked active.
+--- 2. Active Child Process Inspection ---
+[PASS] Long-running build prevents container from stopping prematurely.
+--- 3. True Idle State (Quiet Shell) ---
+[PASS] Silent shell past timeout transitions to idle.
+=== ALL PROCESS-AWARE IDLE TESTS PASSED ===
+=== RUNNING DEVBOX TWO-STEP DELETION TESTS ===
+--- 1. Step 1: Soft Delete (7-Day Recovery Grace Period) ---
+[PASS] Soft delete preserves volume and schedules 7-day grace period.
+--- 2. Restore from Grace Period ---
+[PASS] Devbox successfully restored from pending-purge.
+--- 3. Step 2: Permanent Purge with 90-Day Audit Log Retention ---
+[PASS] Volume destroyed but forensic audit log retained outside devbox volume.
+=== ALL TWO-STEP DELETION TESTS PASSED ===
+=== RUNNING DEVBOX HOST CAPACITY GUARD TESTS ===
+[PASS] 5 concurrent devboxes running on host.
+--- Enforcing 6th Devbox Concurrency Ceiling ---
+[PASS] Host capacity guard protects Strato host and CineDrama from resource starvation.
+=== ALL HOST CAPACITY GUARD TESTS PASSED ===
+=== RUNNING DEVBOX PTY STREAM SECRET REDACTION TESTS ===
+--- 1. Echoing GitHub Fine-grained PAT in Devbox PTY ---
+[PASS] Echoed GitHub PAT redacted on PTY stream before reaching WebSocket.
+--- 2. Echoing Anthropic API Key in Devbox PTY ---
+[PASS] Echoed Anthropic API key redacted on PTY stream.
+=== ALL PTY STREAM SECRET REDACTION TESTS PASSED ===
+=== RUNNING DEVBOX STATE MACHINE & LIFECYCLE TESTS ===
+--- 1. Initial Devbox Provisioning ---
+[PASS] Devbox provisioned and transitions to running state.
+--- 2. Active Session Metering ---
+[PASS] Metering tracks active container session.
+--- 3. Freeze Devbox ---
+[PASS] Freeze transitions container state to stopped.
+--- 4. Auto-Restart on Execution ---
+[PASS] Auto-restart transitions stopped devbox back to running on command.
+=== ALL DEVBOX STATE MACHINE TESTS PASSED ===
+=== RUNNING DEVBOX COMPENSATING CONTROLS TESTS ===
+--- 1. Append-Only Audit Logging ---
+[PASS] Append-only audit logger records commands with timestamps and exit codes.
+--- 2. Pre-Push Git Snapshot & Rollback Command ---
+[PASS] Automatic pre-push snapshot recorded with 1-click rollback command.
+--- 3. Stop Agent Kill Switch ---
+[PASS] Stop Agent kill switch terminates active processes immediately.
+=== ALL COMPENSATING CONTROLS TESTS PASSED ===
+=== RUNNING DEVBOX TIER GATING & QUOTA TESTS ===
+--- 1. Free Tier Entitlement Gate ---
+[PASS] Free tier correctly rejected and redirected to WebContainer runtime.
+--- 2. Pro Tier Allowance ---
+[PASS] Pro tier provisioned with monthly compute quota.
+--- 3. Quota Exhaustion Pause State ---
+[PASS] Quota exhaustion pauses container and returns upgrade message.
+=== ALL DEVBOX TIER GATING TESTS PASSED ===
+=== RUNNING DEVBOX NETWORK & HOST ISOLATION TESTS ===
+--- 1. CineDrama Port Isolation (3000 / 5000) ---
+[PASS] CineDrama ports 3000 and 5000 blocked by network boundary rules.
+--- 2. CoderXP Host Port Isolation (3100) ---
+[PASS] Host container port 3100 blocked from devbox containers.
+--- 3. Cloud Metadata Isolation ---
+[PASS] Cloud metadata IP 169.254.169.254 blocked.
+--- 4. Public Internet Egress ---
+[PASS] Public internet egress permitted for package managers & git.
+=== ALL DEVBOX NETWORK ISOLATION TESTS PASSED ===
+==========================================================================
+      M3.6 AGENT PERMISSIONS & SECURITY SUITE (DETERMINISTIC HARNESS)     
+==========================================================================
+
+--- 1. POLICY MATRIX & DESTRUCTIVE ENFORCEMENT ---
+[PASS #1] Ask Mode - Read: Read is auto in ask mode
+[PASS #2] Ask Mode - Write: Write requires approval in ask mode
+[PASS #3] Ask Mode - Execute: Execute requires approval in ask mode
+[PASS #4] Ask Mode - Destructive: Destructive requires approval in ask mode
+[PASS #5] Auto-Safe Mode - Read: Read is auto in auto-safe mode
+[PASS #6] Auto-Safe Mode - Write: Write is auto in auto-safe mode
+[PASS #7] Auto-Safe Mode - Execute: Execute requires approval in auto-safe mode
+[PASS #8] Auto-Safe Mode - Destructive: Destructive requires approval in auto-safe mode
+[PASS #9] Autonomous Mode - Read: Read is auto in autonomous mode
+[PASS #10] Autonomous Mode - Write: Write is auto in autonomous mode
+[PASS #11] Autonomous Mode - Execute: Execute is auto in autonomous mode
+[PASS #12] Autonomous Mode - Destructive: Destructive ALWAYS requires approval in autonomous mode!
+[PASS #13] alwaysRequiresApproval Guard: alwaysRequiresApproval('destructive') returns true
+
+--- 2. ONE-SHOT CONSUMPTION & CONCURRENCY ---
+[PASS #14] Request Approval: Destructive call yields pending approval
+[PASS #15] Invocation #1: First approved invocation executes
+[PASS #16] Execution Count #1: Handler executed exactly 1 time
+[PASS #17] Invocation #2: Second identical invocation requires new approval
+[PASS #18] Execution Count #2: Handler executed 0 additional times
+[PASS #19] Concurrent Execution - Single Success: Exactly one concurrent call executed
+[PASS #20] Concurrent Execution - Single Blocked: Exactly one concurrent call was blocked awaiting approval
+[PASS #21] Concurrent Execution - Handler Counter: Handler executed exactly 1 time across concurrent races
+
+--- 3. FAILURE & ISOLATION BEHAVIOR ---
+[PASS #22] Failure Recovery - Throw: Authorization remains consumed after handler throw; retry requires new approval
+[PASS #23] Generation Change: Generation switch invalidates authorization and yields stale
+[PASS #24] Controller Cancel: cancel() returns true for pending approval
+[PASS #25] Cancelled Outcome: Cancelled call does not execute
+
+--- 4. SECRET REDACTION & SANITIZATION ---
+[PASS #26] Executable Extraction - Path: Strips path and flags from command string
+[PASS #27] Executable Extraction - Windows Path: Strips Windows path from command string
+[PASS #28] URL Credential Redaction - Password: Redacts embedded URL passwords
+[PASS #29] URL Credential Redaction - Query Token: Redacts sensitive query parameters
+[PASS #30] URL Credential Redaction - API Key: Redacts sensitive API keys
+[PASS #31] Bearer Redaction: Redacts Bearer JWT tokens
+[PASS #32] Token Flag Redaction: Redacts --token flag secrets
+  Generated Summary: "Start a real bounded process in the workspace container (timeout <= 120s). — command npm, Arguments: 3, contents, env, password, token not shown"
+[PASS #33] Summary - Raw Command Path: Raw command path is omitted from summary
+[PASS #34] Summary - Command Token: Command token is redacted from summary
+[PASS #35] Summary - Argument Values: Argument string values are omitted from summary
+[PASS #36] Summary - Env Secrets: Env secrets are omitted from summary
+[PASS #37] Summary - File Contents: File contents are omitted from summary
+[PASS #38] Summary - Sensitive Key Token: Sensitive key 'token' value is omitted
+[PASS #39] Summary - Executable Name: Displays clean executable name 'npm'
+[PASS #40] Summary - Argument Count: Displays safe argument count ('Arguments: 3')
+
+--- 5. PUBLIC API HARDENING & BYPASS VERIFICATION ---
+[PASS #41] API Surface Check: AgentToolsApi type contains no invokeUnchecked entrypoint
+
+--- 6. NEGATIVE CONTROL & SECURITY ASSERTIONS ---
+[PASS #42] Negative Control - Bypass Gate: Unapproved call is stopped by gateAndInvoke and returns awaiting-approval
+[PASS #43] Negative Control - Handler Count: Handler executed ZERO times without approval (gate is load-bearing)
+[PASS #44] Negative Control - Denied Outcome: Denied approval produces denied outcome
+[PASS #45] Negative Control - PERMISSION_DENIED Code: Tool result contains PERMISSION_DENIED error code
+[PASS #46] Negative Control - Unknown Tool Outcome: Unknown tool call is denied immediately
+[PASS #47] Negative Control - UNKNOWN_TOOL Code: Tool result contains UNKNOWN_TOOL error code
+
+==========================================================================
+  SUCCESS: ALL 47 DETERMINISTIC ASSERTIONS PASSED PERFECTLY!
+==========================================================================
+
+==========================================================================
+      M3.7 AGENT TOOL EXECUTION RUNTIME (COMPREHENSIVE HARNESS)           
+==========================================================================
+
+--- 1. APPROVAL INVALIDATION & TERMINAL-STATE MATRIX ---
+[PASS #1] Pending approval created for write_file in ask mode
+[PASS #2] Invalidate pending approval returns true
+[PASS #3] Pending approval marked cancelled
+[PASS #4] Invalidation fires notification exactly once
+[PASS #5] Repeated invalidation returns false
+[PASS #6] Repeated invalidation does not trigger additional notifications
+[PASS #7] Retained cancelled state unchanged
+[PASS #8] Approval resolved to approved
+[PASS #9] Approval status is approved
+[PASS #10] Invalidate approved unconsumed approval returns true
+[PASS #11] Approved unconsumed approval marked cancelled
+[PASS #12] Approval consumed and allowed returned
+[PASS #13] Approval status is consumed
+[PASS #14] Attempt to invalidate consumed approval returns false
+[PASS #15] Consumed approval status remains untouched
+[PASS #16] Approval status is denied
+[PASS #17] Attempt to invalidate denied approval returns false
+[PASS #18] Denied approval status remains untouched
+[PASS #19] Approval status is expired
+[PASS #20] Attempt to invalidate expired approval returns false
+[PASS #21] Expired approval status remains untouched
+[PASS #22] No notification fired on attempted invalidation of expired approval
+[PASS #23] Audit record remains unchanged in storage
+[PASS #24] Attempt to invalidate cancelled approval returns false
+[PASS #25] Stale generation (1 vs 2) cannot invalidate newer approval
+[PASS #26] Wrong projectId cannot invalidate approval
+[PASS #27] Wrong toolCallId cannot invalidate approval
+[PASS #28] Wrong argsFingerprint cannot invalidate approval
+[PASS #29] Approval remains pending after failed match checks
+[PASS #30] Audit record preserved after invalidation
+
+--- 2. AUTOMATIC READ EXECUTION & RUNNING COMMIT ---
+[PASS #31] Handler invoked with tool name read_file
+[PASS #32] isCurrent() returns true inside handler
+[PASS #33] Read call in ask mode transitions queued -> running -> succeeded
+[PASS #34] Handler executed exactly 1 time
+[PASS #35] Emitted attempt:queued, attempt:running, and attempt:succeeded in order
+
+--- 3. APPROVAL FLOW, RESUME & QUEUE BLOCKING ---
+[PASS #36] Write call paused at awaiting-approval
+[PASS #37] Active head is attempt A
+[PASS #38] Second call remains queued behind awaiting-approval head
+[PASS #39] No handler executed yet
+[PASS #40] Approval recorded in controller
+[PASS #41] Concurrent resumes execute at most once (exactly 1 returns true)
+[PASS #42] Attempt A reached succeeded state
+[PASS #43] Write handler executed exactly 1 time
+[PASS #44] Attempt B progressed and succeeded after attempt A finished
+[PASS #45] Read handler executed exactly 1 time
+[PASS #46] Duplicate approve on resolved approval returns false
+
+--- 4. INTERRUPTED APPROVALS & ABANDONED AUTHORIZATIONS ---
+[PASS #47] Attempt 4a is awaiting approval
+[PASS #48] Approval recorded as approved
+[PASS #49] Attempt 4a cancelled before resume
+[PASS #50] Approved unconsumed authorization was cancelled upon attempt cancellation
+[PASS #51] Resume on cancelled attempt returns false
+[PASS #52] Retry attempt cannot claim cancelled authorization and requires new approval
+[PASS #53] Attempt 4b transitioned to stale on generation invalidation
+[PASS #54] Approval invalidated on generation switch
+[PASS #55] Resume on stale attempt returns false
+
+--- 5. HANDLER FAILURES, THROWS & QUEUE PROGRESSION ---
+[PASS #56] Handler returning ok:false maps to failed state
+[PASS #57] Error code is HANDLER_FAILED
+[PASS #58] Queue progressed automatically after HANDLER_FAILED
+[PASS #59] Subsequent queue item executed after failure
+[PASS #60] Handler throwing an exception maps to failed state
+[PASS #61] Error code is HANDLER_THROWN
+[PASS #62] Queue progressed automatically after HANDLER_THROWN
+[PASS #63] Subsequent queue item executed after handler throw
+[PASS #64] Retry has a distinct, new attempt ID
+[PASS #65] Retry in ask mode re-evaluates permissions and pauses for approval
+
+--- 6. QUEUE PROGRESSION ACROSS ALL TERMINAL STATES ---
+[PASS #66] Head was denied
+[PASS #67] Queue progressed after head denial
+[PASS #68] Head was cancelled
+[PASS #69] Queue progressed after head cancellation
+
+--- 7. IN-FLIGHT GENERATION CHANGE & LATE RESULT SUPPRESSION ---
+[PASS #70] Attempt is actively running
+[PASS #71] In-flight attempt marked stale on generation bump
+[PASS #72] Late handler executed
+[PASS #73] Late handler exception does NOT overwrite stale terminal state
+
+--- 8. IDEMPOTENCY KEYS & IDENTITY CHECKS ---
+[PASS #74] Different idempotency keys yield distinct execution attempts
+[PASS #75] Both distinct attempts succeeded
+[PASS #76] Conflicting submission with same key throws IdempotencyConflictError
+
+--- 9. COMPLETE TOOL DISCLOSURE REGISTRY COVERAGE ---
+[PASS #77] Tool list_files is present in AGENT_TOOLS registry
+[PASS #78] Tool read_file is present in AGENT_TOOLS registry
+[PASS #79] Tool read_files is present in AGENT_TOOLS registry
+[PASS #80] Tool create_file is present in AGENT_TOOLS registry
+[PASS #81] Tool write_file is present in AGENT_TOOLS registry
+[PASS #82] Tool apply_patch is present in AGENT_TOOLS registry
+[PASS #83] Tool rename_file is present in AGENT_TOOLS registry
+[PASS #84] Tool delete_file is present in AGENT_TOOLS registry
+[PASS #85] Tool run_command is present in AGENT_TOOLS registry
+[PASS #86] Tool stop_command is present in AGENT_TOOLS registry
+[PASS #87] Tool read_command_output is present in AGENT_TOOLS registry
+[PASS #88] Tool run_project is present in AGENT_TOOLS registry
+[PASS #89] Tool stop_project is present in AGENT_TOOLS registry
+[PASS #90] Tool get_runtime_status is present in AGENT_TOOLS registry
+[PASS #91] Tool run_build is present in AGENT_TOOLS registry
+[PASS #92] Tool run_tests is present in AGENT_TOOLS registry
+[PASS #93] Model-facing projection for list_files returns ok:true
+[PASS #94] Model projection for list_files redacts raw env secrets
+[PASS #95] Model projection for list_files redacts secret tokens in content
+[PASS #96] User summary for list_files is non-empty
+[PASS #97] User summary for list_files contains no raw secrets
+[PASS #98] Model-facing projection for read_file returns ok:true
+[PASS #99] Model projection for read_file redacts raw env secrets
+[PASS #100] Model projection for read_file redacts secret tokens in content
+[PASS #101] User summary for read_file is non-empty
+[PASS #102] User summary for read_file contains no raw secrets
+[PASS #103] Model-facing projection for read_files returns ok:true
+[PASS #104] Model projection for read_files redacts raw env secrets
+[PASS #105] Model projection for read_files redacts secret tokens in content
+[PASS #106] User summary for read_files is non-empty
+[PASS #107] User summary for read_files contains no raw secrets
+[PASS #108] Model-facing projection for create_file returns ok:true
+[PASS #109] Model projection for create_file redacts raw env secrets
+[PASS #110] Model projection for create_file redacts secret tokens in content
+[PASS #111] User summary for create_file is non-empty
+[PASS #112] User summary for create_file contains no raw secrets
+[PASS #113] Model-facing projection for write_file returns ok:true
+[PASS #114] Model projection for write_file redacts raw env secrets
+[PASS #115] Model projection for write_file redacts secret tokens in content
+[PASS #116] User summary for write_file is non-empty
+[PASS #117] User summary for write_file contains no raw secrets
+[PASS #118] Model-facing projection for apply_patch returns ok:true
+[PASS #119] Model projection for apply_patch redacts raw env secrets
+[PASS #120] Model projection for apply_patch redacts secret tokens in content
+[PASS #121] User summary for apply_patch is non-empty
+[PASS #122] User summary for apply_patch contains no raw secrets
+[PASS #123] Model-facing projection for rename_file returns ok:true
+[PASS #124] Model projection for rename_file redacts raw env secrets
+[PASS #125] Model projection for rename_file redacts secret tokens in content
+[PASS #126] User summary for rename_file is non-empty
+[PASS #127] User summary for rename_file contains no raw secrets
+[PASS #128] Model-facing projection for delete_file returns ok:true
+[PASS #129] Model projection for delete_file redacts raw env secrets
+[PASS #130] Model projection for delete_file redacts secret tokens in content
+[PASS #131] User summary for delete_file is non-empty
+[PASS #132] User summary for delete_file contains no raw secrets
+[PASS #133] Model-facing projection for run_command returns ok:true
+[PASS #134] Model projection for run_command redacts raw env secrets
+[PASS #135] Model projection for run_command redacts secret tokens in content
+[PASS #136] User summary for run_command is non-empty
+[PASS #137] User summary for run_command contains no raw secrets
+[PASS #138] Model-facing projection for stop_command returns ok:true
+[PASS #139] Model projection for stop_command redacts raw env secrets
+[PASS #140] Model projection for stop_command redacts secret tokens in content
+[PASS #141] User summary for stop_command is non-empty
+[PASS #142] User summary for stop_command contains no raw secrets
+[PASS #143] Model-facing projection for read_command_output returns ok:true
+[PASS #144] Model projection for read_command_output redacts raw env secrets
+[PASS #145] Model projection for read_command_output redacts secret tokens in content
+[PASS #146] User summary for read_command_output is non-empty
+[PASS #147] User summary for read_command_output contains no raw secrets
+[PASS #148] Model-facing projection for run_project returns ok:true
+[PASS #149] Model projection for run_project redacts raw env secrets
+[PASS #150] Model projection for run_project redacts secret tokens in content
+[PASS #151] User summary for run_project is non-empty
+[PASS #152] User summary for run_project contains no raw secrets
+[PASS #153] Model-facing projection for stop_project returns ok:true
+[PASS #154] Model projection for stop_project redacts raw env secrets
+[PASS #155] Model projection for stop_project redacts secret tokens in content
+[PASS #156] User summary for stop_project is non-empty
+[PASS #157] User summary for stop_project contains no raw secrets
+[PASS #158] Model-facing projection for get_runtime_status returns ok:true
+[PASS #159] Model projection for get_runtime_status redacts raw env secrets
+[PASS #160] Model projection for get_runtime_status redacts secret tokens in content
+[PASS #161] User summary for get_runtime_status is non-empty
+[PASS #162] User summary for get_runtime_status contains no raw secrets
+[PASS #163] Model-facing projection for run_build returns ok:true
+[PASS #164] Model projection for run_build redacts raw env secrets
+[PASS #165] Model projection for run_build redacts secret tokens in content
+[PASS #166] User summary for run_build is non-empty
+[PASS #167] User summary for run_build contains no raw secrets
+[PASS #168] Model-facing projection for run_tests returns ok:true
+[PASS #169] Model projection for run_tests redacts raw env secrets
+[PASS #170] Model projection for run_tests redacts secret tokens in content
+[PASS #171] User summary for run_tests is non-empty
+[PASS #172] User summary for run_tests contains no raw secrets
+
+--- 10. RAW RESULT LIFETIME, IMMUTABILITY & EVENT PRIVACY ---
+[PASS #173] attempt:succeeded event was emitted
+[PASS #174] attempt:succeeded event does NOT contain rawResult field
+[PASS #175] Event history is immune to subsequent mutations of the raw result object
+
+--- 11. TRANSCRIPT PROJECTOR ACROSS ALL EVENT TYPES ---
+[PASS #176] Projects tool-call block on running
+[PASS #177] Projects approval-requested block on awaiting-approval
+[PASS #178] Projects tool-result (isError:false) on succeeded
+[PASS #179] Projects tool-result (isError:true) on failed
+[PASS #180] Projects tool-result on denied
+[PASS #181] Projects cancellation block on cancelled
+[PASS #182] Projects cancellation block on stale
+[PASS #183] Transcript projection is idempotent upon event replay
+
+--- 12. LOAD-BEARING NEGATIVE CONTROLS & MUTATION TEST ---
+[PASS #184] Unapproved write is blocked awaiting approval
+[PASS #185] Negative Control #1: Handler executed 0 times without approval
+[PASS #186] With lock: exactly 1 concurrent resume succeeds
+[PASS #187] With lock: handler invoked exactly 1 time
+[PASS #188] Without lock (mutated): both concurrent resumes succeed (2)
+[PASS #189] Negative Control #2: Mutation test proves disabling resume lock causes duplicate execution (2 > 1)
+==========================================================================
+  SUCCESS: ALL 189 COMPREHENSIVE ASSERTIONS PASSED PERFECTLY!
+==========================================================================
+==========================================================================
+      M3.7 WORKSPACE INTEGRATION & ADAPTER TEST HARNESS                   
+==========================================================================
+
+--- 1. APPROVAL CARD CORRELATION & RESOLUTION FLOW ---
+[PASS #1] Attempt pauses in awaiting-approval
+[PASS #2] Exactly one pending approval card exists in controller
+[PASS #3] Approval card ID in controller matches attempt approvalId exactly
+[PASS #4] Controller records approval for card
+[PASS #5] Adapter resumes correlated attempt successfully
+[PASS #6] Attempt transitioned to succeeded
+[PASS #7] Tool handler executed exactly 1 time
+[PASS #8] Pending approval card removed after resolution
+
+--- 2. DENIAL & CANCELLATION CARD CLEANUP ---
+[PASS #9] Pending card created
+[PASS #10] Attempt marked denied
+[PASS #11] Card dismissed on denial
+
+--- 3. PROJECT SWITCH DISPOSAL & GENERATION FENCING ---
+[PASS #12] Old runtime cancelled all active and queued attempts
+[PASS #13] Old project attempt transitioned to cancelled
+[PASS #14] New runtime bound to new project
+[PASS #15] New runtime has isolated, clean attempt history
+
+--- 4. EVENT SUBSCRIPTION & UNMOUNT CLEANUP ---
+[PASS #16] Event listener received execution events
+[PASS #17] Unsubscribed listener receives zero further events
+
+--- 5. CHAT TRANSCRIPT REPLAY DEDUPLICATION ---
+[PASS #18] First event creates exactly 1 block
+
+--- 6. REACT LIFETIME, STRICT MODE & OLD-EFFECT DISPOSAL ISOLATION ---
+[PASS #19] Runtime instance is stable across rerender 1
+[PASS #20] Runtime instance is stable across rerender 2
+[PASS #21] First submission in Strict Mode mount is new
+[PASS #22] Effect replay submission in Strict Mode is deduplicated (isNew: false)
+[PASS #23] Returns identical attempt instance
+[PASS #24] Handler executed exactly 1 time across Strict Mode replay
+[PASS #25] Old runtime attempt is cancelled by old effect cleanup
+[PASS #26] New runtime attempt is untouched by old effect cleanup
+[PASS #27] New runtime progresses and succeeds independently
+
+--- 7. M3.8 FULL WORKSPACE INTEGRATION & ORCHESTRATOR WIRING ---
+[PASS #28] Orchestrator initialized in idle state
+[PASS #29] Prompt starts orchestrator run
+[PASS #30] Paused at waiting-for-approval for write_file
+[PASS #31] Approval request pending in controller
+[PASS #32] Found correlated M3.7 attempt
+[PASS #33] Orchestrator run completed after tool resolution
+[PASS #34] Tool executed exactly 1 time through gate
+[PASS #35] Process-stream bridge emitted events to dispatcher
+[PASS #36] Transcript contains command-started block
+[PASS #37] Transcript contains command-output block
+[PASS #38] Transcript contains command-completed block
+[PASS #39] Unsubscribed bridge receives zero further events
+[PASS #40] Project switch / generation invalidation stales active orchestrator
+==========================================================================
+  SUCCESS: ALL 40 ADAPTER & INTEGRATION ASSERTIONS PASSED!
+==========================================================================
+===============================================================
+CoderXP M3.8 Deterministic Orchestration & Transport Harness
+===============================================================
+
+--- Section 1: Orchestration State Machine & Turn Lifecycle ---
+  ✓ Initial state transitions to starting
+  ✓ Text-only run transitions to completed
+  ✓ Conversation has user and assistant messages
+  ✓ Assistant message recorded
+  ✓ Assistant text deltas merged correctly
+  ✓ Paused at waiting-for-approval for gated rename_file
+  ✓ Pending approval card created by M3.6 controller
+  ✓ Approval decision recorded in M3.6
+  ✓ Found in-flight attempt in runtime
+  ✓ Run completes after tool resolution and follow-up turn
+  ✓ Conversation has user, assistant (call), tool (result), assistant (summary)
+  ✓ Canonical tool result message injected
+  ✓ Model-safe tool result envelope reflects succeeded status
+  ✓ Multiple read_file calls executed without requiring approval
+  ✓ Tool message contains 2 ordered tool result envelopes
+  ✓ Run completes after handling denial
+  ✓ Denied tool result envelope recorded with denied status
+  ✓ Waiting for approval before cancellation
+  ✓ cancel() returns true for active run
+  ✓ State transitions to cancelled
+  ✓ cancel() on terminal run returns false
+  ✓ Run transitions to stale on generation invalidation
+  ✓ Run fails when exceeding maxTurns
+  ✓ 50 iterative turns executed smoothly without stack overflow
+
+--- Section 2: Transport Protocol Grammar & Tool Assembly ---
+  ✓ Character chunk appended
+  ✓ Character chunk appended
+  ✓ Character chunk appended
+  ✓ Character chunk appended
+  ✓ Character chunk appended
+  ✓ Character chunk appended
+  ✓ Character chunk appended
+  ✓ Character chunk appended
+  ✓ Character chunk appended
+  ✓ Character chunk appended
+  ✓ Character chunk appended
+  ✓ Character chunk appended
+  ✓ Character chunk appended
+  ✓ Character chunk appended
+  ✓ Character chunk appended
+  ✓ Character chunk appended
+  ✓ Character chunk appended
+  ✓ Character chunk appended
+  ✓ 10-character fragmented arguments assembled cleanly
+  ✓ Parsed arguments match expected object
+  ✓ Interleaved tool calls finalized
+  ✓ Call A args match
+  ✓ Call B args match
+  ✓ Malformed JSON rejected with PROTOCOL_ERROR
+  ✓ Payload > 64 KB rejected with ARGUMENT_LIMIT_EXCEEDED
+  ✓ Missing required 'path' rejected
+  ✓ Path traversal rejected
+  ✓ Valid workspace path accepted
+  ✓ Tool list_files has canonical schema coverage
+  ✓ Tool read_file has canonical schema coverage
+  ✓ Tool read_files has canonical schema coverage
+  ✓ Tool create_file has canonical schema coverage
+  ✓ Tool write_file has canonical schema coverage
+  ✓ Tool apply_patch has canonical schema coverage
+  ✓ Tool rename_file has canonical schema coverage
+  ✓ Tool delete_file has canonical schema coverage
+  ✓ Tool run_command has canonical schema coverage
+  ✓ Tool start_process has canonical schema coverage
+  ✓ Tool stop_command has canonical schema coverage
+  ✓ Tool read_command_output has canonical schema coverage
+  ✓ Tool run_project has canonical schema coverage
+  ✓ Tool stop_project has canonical schema coverage
+  ✓ Tool get_runtime_status has canonical schema coverage
+  ✓ Tool run_build has canonical schema coverage
+  ✓ Tool run_tests has canonical schema coverage
+  ✓ Unknown tool name returns UNKNOWN_TOOL error code
+  ✓ Event after terminal rejected with run failure
+  ✓ Zero tools submitted on event after terminal
+  ✓ Iterator error fails run
+  ✓ Zero tools submitted on iterator error
+  ✓ Missing terminal event fails run with PROTOCOL_ERROR
+  ✓ Zero tools submitted on missing terminal event
+  ✓ Incomplete tool call fails run
+  ✓ Zero tools submitted when tool call remains incomplete
+  ✓ Schema validation failure fails run
+  ✓ Zero tools submitted when schema validation fails
+
+--- Section 3: Process Streaming & Stateful Cross-Chunk Redaction ---
+  ✓ Secret token omitted from chunk output
+  ✓ Sanitized output replaces token
+  ✓ Overlong sensitive buffer fails closed
+  ✓ Flush on exit clears buffer cleanly
+  ✓ Output event received through bridge
+
+--- Section 4: Transcript Ingestion Dispatcher & Sequencing ---
+  ✓ First event assigned sequence 1
+  ✓ Replayed event rejected without consuming sequence number
+  ✓ Second event assigned sequence 2
+  ✓ Transcript contains 2 projected blocks
+
+--- Section 5: Mutation Controls (Negative Controls) ---
+  ✓ Mutation 1 passed: Incomplete tool calls rejected before submission
+  ✓ Mutation 2 passed: M3.7 runtime enforces M3.6 permission gate
+  ✓ Mutation 3 passed: Stale generation immediately sets attempt to stale
+  ✓ Mutation 4 passed: Token redacted in output stream
+  ✓ Mutation 5 passed: Duplicate chunk rejected by dispatcher
+
+===============================================================
+All 94 CoderXP M3.8 Deterministic Tests Passed Successfully!
+===============================================================
+
+==========================================================================
+      M3.9 ANTHROPIC ADAPTER & CANONICAL MANIFEST TEST HARNESS            
+==========================================================================
+
+--- 1. TOOL MANIFEST PARITY WITH EXECUTABLE REGISTRY ---
+[PASS #1] Manifest contains exactly 17 tools
+[PASS #2] Executable registry contains exactly 17 tools
+[PASS #3] Manifest contains tool 'list_files'
+[PASS #4] Category matches for 'list_files'
+[PASS #5] Risk matches for 'list_files'
+[PASS #6] Approval requirement matches for 'list_files'
+[PASS #7] JSON Schema is an object for 'list_files'
+[PASS #8] Manifest contains tool 'read_file'
+[PASS #9] Category matches for 'read_file'
+[PASS #10] Risk matches for 'read_file'
+[PASS #11] Approval requirement matches for 'read_file'
+[PASS #12] JSON Schema is an object for 'read_file'
+[PASS #13] Manifest contains tool 'read_files'
+[PASS #14] Category matches for 'read_files'
+[PASS #15] Risk matches for 'read_files'
+[PASS #16] Approval requirement matches for 'read_files'
+[PASS #17] JSON Schema is an object for 'read_files'
+[PASS #18] Manifest contains tool 'create_file'
+[PASS #19] Category matches for 'create_file'
+[PASS #20] Risk matches for 'create_file'
+[PASS #21] Approval requirement matches for 'create_file'
+[PASS #22] JSON Schema is an object for 'create_file'
+[PASS #23] Manifest contains tool 'write_file'
+[PASS #24] Category matches for 'write_file'
+[PASS #25] Risk matches for 'write_file'
+[PASS #26] Approval requirement matches for 'write_file'
+[PASS #27] JSON Schema is an object for 'write_file'
+[PASS #28] Manifest contains tool 'apply_patch'
+[PASS #29] Category matches for 'apply_patch'
+[PASS #30] Risk matches for 'apply_patch'
+[PASS #31] Approval requirement matches for 'apply_patch'
+[PASS #32] JSON Schema is an object for 'apply_patch'
+[PASS #33] Manifest contains tool 'rename_file'
+[PASS #34] Category matches for 'rename_file'
+[PASS #35] Risk matches for 'rename_file'
+[PASS #36] Approval requirement matches for 'rename_file'
+[PASS #37] JSON Schema is an object for 'rename_file'
+[PASS #38] Manifest contains tool 'delete_file'
+[PASS #39] Category matches for 'delete_file'
+[PASS #40] Risk matches for 'delete_file'
+[PASS #41] Approval requirement matches for 'delete_file'
+[PASS #42] JSON Schema is an object for 'delete_file'
+[PASS #43] Manifest contains tool 'run_command'
+[PASS #44] Category matches for 'run_command'
+[PASS #45] Risk matches for 'run_command'
+[PASS #46] Approval requirement matches for 'run_command'
+[PASS #47] JSON Schema is an object for 'run_command'
+[PASS #48] Manifest contains tool 'start_process'
+[PASS #49] Category matches for 'start_process'
+[PASS #50] Risk matches for 'start_process'
+[PASS #51] Approval requirement matches for 'start_process'
+[PASS #52] JSON Schema is an object for 'start_process'
+[PASS #53] Manifest contains tool 'stop_command'
+[PASS #54] Category matches for 'stop_command'
+[PASS #55] Risk matches for 'stop_command'
+[PASS #56] Approval requirement matches for 'stop_command'
+[PASS #57] JSON Schema is an object for 'stop_command'
+[PASS #58] Manifest contains tool 'read_command_output'
+[PASS #59] Category matches for 'read_command_output'
+[PASS #60] Risk matches for 'read_command_output'
+[PASS #61] Approval requirement matches for 'read_command_output'
+[PASS #62] JSON Schema is an object for 'read_command_output'
+[PASS #63] Manifest contains tool 'run_project'
+[PASS #64] Category matches for 'run_project'
+[PASS #65] Risk matches for 'run_project'
+[PASS #66] Approval requirement matches for 'run_project'
+[PASS #67] JSON Schema is an object for 'run_project'
+[PASS #68] Manifest contains tool 'stop_project'
+[PASS #69] Category matches for 'stop_project'
+[PASS #70] Risk matches for 'stop_project'
+[PASS #71] Approval requirement matches for 'stop_project'
+[PASS #72] JSON Schema is an object for 'stop_project'
+[PASS #73] Manifest contains tool 'get_runtime_status'
+[PASS #74] Category matches for 'get_runtime_status'
+[PASS #75] Risk matches for 'get_runtime_status'
+[PASS #76] Approval requirement matches for 'get_runtime_status'
+[PASS #77] JSON Schema is an object for 'get_runtime_status'
+[PASS #78] Manifest contains tool 'run_build'
+[PASS #79] Category matches for 'run_build'
+[PASS #80] Risk matches for 'run_build'
+[PASS #81] Approval requirement matches for 'run_build'
+[PASS #82] JSON Schema is an object for 'run_build'
+[PASS #83] Manifest contains tool 'run_tests'
+[PASS #84] Category matches for 'run_tests'
+[PASS #85] Risk matches for 'run_tests'
+[PASS #86] Approval requirement matches for 'run_tests'
+[PASS #87] JSON Schema is an object for 'run_tests'
+[PASS #88] isValidManifestTool returns true for valid tool
+[PASS #89] isValidManifestTool returns false for unknown tool
+
+--- 2. REQUEST VALIDATION & CANONICAL TRANSLATION ---
+[PASS #90] Valid request translated successfully
+[PASS #91] Model is set to default model
+[PASS #92] Temperature is translated
+[PASS #93] max_tokens is translated
+[PASS #94] System prompt translated
+[PASS #95] User message present in Anthropic messages array
+[PASS #96] User role mapped correctly
+[PASS #97] All tools mapped to Anthropic tools format
+[PASS #98] Stream parameter is explicitly true
+
+--- 3. PARAMETER REJECTION & NEGATIVE CONTROLS ---
+[PASS #99] Unlisted model rejected
+[PASS #100] Returns MODEL_NOT_ALLOWED error code
+[PASS #101] Temperature > 1.0 rejected
+[PASS #102] Returns INVALID_REQUEST for temperature > 1.0
+[PASS #103] maxTokens > 8192 rejected
+[PASS #104] Returns INVALID_REQUEST for maxTokens > 8192
+[PASS #105] Unknown tool rejected
+[PASS #106] Returns TOOL_NOT_ALLOWED error code
+[PASS #107] Orphaned tool result without prior tool request rejected
+[PASS #108] Returns INVALID_REQUEST error code
+
+--- 4. TWO-TURN TOOL REQUEST & RESULT FLOW TRANSLATION ---
+[PASS #109] Two-turn conversation translated successfully
+[PASS #110] Anthropic messages contains 3 turns (user, assistant, user-tool-result)
+[PASS #111] Turn 2 is assistant
+[PASS #112] Assistant content is an array of blocks
+[PASS #113] First assistant block is text
+[PASS #114] Second assistant block is tool_use
+[PASS #115] tool_use id matches toolCallId
+[PASS #116] Turn 3 tool result is placed in user role for Anthropic API
+[PASS #117] Block type is tool_result
+[PASS #118] tool_use_id matches toolCallId
+[PASS #119] is_error is false
+
+--- 5. ANTHROPIC STREAM TRANSLATOR & CANONICAL SSE EMISSION ---
+[PASS #120] Emitted turn-started on message_start
+[PASS #121] First event is turn-started
+[PASS #122] turn-started has sequence 1
+[PASS #123] Emitted text-delta for initial text block
+[PASS #124] text-delta contains initial text
+[PASS #125] Emitted text-delta for stream delta
+[PASS #126] text-delta matches chunk
+[PASS #127] Emitted tool-call-started
+[PASS #128] tool-call-started event properties match
+[PASS #129] Emitted 2 tool-call-arguments-delta events for fragments
+[PASS #130] Fragment 1 emitted correctly
+[PASS #131] Fragment 2 emitted correctly
+[PASS #132] Emitted tool-call-completed
+[PASS #133] tool-call-completed matches toolCallId
+[PASS #134] Emitted usage and turn-completed events
+[PASS #135] usage event matches output tokens
+[PASS #136] turn-completed maps stop_reason 'tool_use' to canonical 'tool_calls'
+[PASS #137] Zero additional events emitted after terminal completed
+
+--- 6. FAIL-CLOSED GUARD & SINGLE TERMINAL INVARIANT ---
+[PASS #138] Emitted transport-error on unknown block index delta
+[PASS #139] Error code is UPSTREAM_PROTOCOL_ERROR
+[PASS #140] Exactly one terminal event emitted
+==========================================================================
+  SUCCESS: ALL 140 ANTHROPIC ADAPTER & MANIFEST ASSERTIONS PASSED!
+==========================================================================
+==========================================================================
+      M3.9 AGENT STREAM ROUTE HANDLER (DETERMINISTIC HARNESS)             
+==========================================================================
+
+--- 1. MISSING BYOK ---
+[PASS #1] Missing BYOK returns 401
+[PASS #2] Missing BYOK uses INVALID_CREDENTIALS
+[PASS #3] Concurrency released after missing BYOK
+[PASS #4] missing-BYOK error body does not contain the synthetic BYOK fixture
+
+--- 2. INVALID CONTENT TYPE ---
+[PASS #5] Invalid content type returns 400
+[PASS #6] Invalid content type uses INVALID_REQUEST
+[PASS #7] Concurrency released after invalid content type
+
+--- 3. MALFORMED JSON ---
+[PASS #8] Malformed JSON returns 400
+[PASS #9] Malformed JSON uses INVALID_REQUEST
+[PASS #10] Concurrency released after malformed JSON
+
+--- 4. OVERSIZED REQUEST ---
+[PASS #11] Oversized body returns 413
+[PASS #12] Oversized body uses REQUEST_TOO_LARGE
+[PASS #13] Concurrency released after oversized body
+
+--- 5. DISALLOWED MODEL ---
+[PASS #14] Disallowed model returns 400
+[PASS #15] Disallowed model uses MODEL_NOT_ALLOWED
+[PASS #16] Concurrency released after disallowed model
+
+--- 6. INVALID OPTIONS ---
+[PASS #17] Out-of-range temperature returns 400
+[PASS #18] Out-of-range temperature uses INVALID_REQUEST
+[PASS #19] Out-of-range maxTokens returns 400
+[PASS #20] Out-of-range maxTokens uses INVALID_REQUEST
+
+--- 7. UNKNOWN TOOL ---
+[PASS #21] Unknown tool returns 400
+[PASS #22] Unknown tool uses TOOL_NOT_ALLOWED
+
+--- 8. MODIFIED TOOL ---
+[PASS #23] Modified tool risk returns 400
+[PASS #24] Modified tool uses TOOL_NOT_ALLOWED
+
+--- 9. CANONICAL TEXT STREAMING ---
+[PASS #25] Upstream URL is the server-owned Anthropic origin
+[PASS #26] Upstream URL does not contain the BYOK fixture
+[PASS #27] Upstream receives the request-scoped BYOK header
+[PASS #28] upstream request body does not contain the synthetic BYOK fixture
+[PASS #29] Text stream returns 200
+[PASS #30] Content-Type is SSE
+[PASS #31] X-Accel-Buffering is no
+[PASS #32] First event is turn-started
+[PASS #33] Text deltas assemble to Hello CoderXP
+[PASS #34] Exactly one terminal event for text stream
+[PASS #35] Text stream terminal is turn-completed
+[PASS #36] Concurrency released after text stream
+[PASS #37] text stream raw SSE does not contain the synthetic BYOK fixture
+[PASS #38] text stream events does not contain the synthetic BYOK fixture
+[PASS #39] Recorded upstream URL is the production origin
+
+--- 10. FRAGMENTED TOOL-CALL STREAMING ---
+[PASS #40] Tool-call stream uses production Anthropic origin
+[PASS #41] Tool-call stream forwards BYOK header
+[PASS #42] Fragmented tool stream emits tool-call-started
+[PASS #43] Fragmented argument chunks assemble path
+[PASS #44] Fragmented tool stream emits tool-call-completed
+[PASS #45] Stop reason is tool_calls
+[PASS #46] Exactly one terminal event for tool stream
+[PASS #47] tool stream events does not contain the synthetic BYOK fixture
+
+--- 11. UPSTREAM ERROR NORMALIZATION ---
+[PASS #48] Exactly one terminal for HTTP 401
+[PASS #49] HTTP 401 emits transport-error
+[PASS #50] HTTP 401 normalizes to INVALID_CREDENTIALS
+[PASS #51] HTTP 401 error has no stack
+[PASS #52] HTTP 401 events does not contain the synthetic BYOK fixture
+[PASS #53] Concurrency released after HTTP 401
+[PASS #54] Exactly one terminal for HTTP 429
+[PASS #55] HTTP 429 emits transport-error
+[PASS #56] HTTP 429 normalizes to RATE_LIMITED
+[PASS #57] HTTP 429 error has no stack
+[PASS #58] HTTP 429 events does not contain the synthetic BYOK fixture
+[PASS #59] Concurrency released after HTTP 429
+[PASS #60] Exactly one terminal for HTTP 500
+[PASS #61] HTTP 500 emits transport-error
+[PASS #62] HTTP 500 normalizes to PROVIDER_UNAVAILABLE
+[PASS #63] HTTP 500 error has no stack
+[PASS #64] HTTP 500 events does not contain the synthetic BYOK fixture
+[PASS #65] Concurrency released after HTTP 500
+
+--- 12. PREMATURE EOF ---
+[PASS #66] Premature EOF emits one terminal
+[PASS #67] Premature EOF uses UPSTREAM_PREMATURE_CLOSE
+[PASS #68] Concurrency released after premature EOF
+
+--- 13. MALFORMED UPSTREAM SSE ---
+[PASS #69] Malformed SSE emits one terminal
+[PASS #70] Malformed SSE uses UPSTREAM_PROTOCOL_ERROR
+
+--- 14. BROWSER CANCELLATION ---
+[PASS #71] Client abort propagated to upstream fetch signal
+[PASS #72] Client abort emits one terminal
+[PASS #73] Client abort emits transport-cancelled
+[PASS #74] Concurrency released after client abort
+[PASS #75] cancel events does not contain the synthetic BYOK fixture
+
+--- 15/20. CONNECT TIMEOUT AND RACES ---
+[PASS #76] Connect timeout aborts upstream
+[PASS #77] Connect timeout emits one terminal
+[PASS #78] Connect timeout uses PROVIDER_TIMEOUT
+[PASS #79] Concurrency released after connect timeout
+[PASS #80] Timers cleared after connect timeout
+[PASS #81] Connect-before-timeout emits one terminal
+[PASS #82] Healthy connect is not treated as timeout
+[PASS #83] Concurrency released after successful connect
+[PASS #84] Client-cancel-before-timeout emits one terminal
+[PASS #85] Client cancel wins over connect timeout
+[PASS #86] Captured connect-timeout callback for stale fire
+[PASS #87] Stale timeout does not add a terminal event
+[PASS #88] Successful completion remains the terminal event
+[PASS #89] Failure/timeout race emits exactly one terminal
+
+--- 16/17. SINGLE TERMINAL AND NO TRAILING EVENTS ---
+[PASS #90] Exactly one canonical terminal event
+[PASS #91] No canonical events after the terminal event
+[PASS #92] Trailing upstream text after stop is dropped
+
+--- 18/19. NORMAL CLOSURE AND CLEANUP ---
+[PASS #93] Response body is consumed/closed after read
+[PASS #94] Normal closure ends with turn-completed
+[PASS #95] Request-scoped concurrency released
+[PASS #96] Request-scoped timers cleared
+[PASS #97] normal-closure snapshot does not contain the synthetic BYOK fixture
+[PASS #98] normal-closure events does not contain the synthetic BYOK fixture
+
+--- NEGATIVE: UPSTREAM THROW IS GENERIC ---
+[PASS #99] thrown-upstream raw does not contain the synthetic BYOK fixture
+[PASS #100] Raw upstream exception text is not disclosed
+[PASS #101] Thrown upstream becomes PROVIDER_UNAVAILABLE
+==========================================================================
+  SUCCESS: ALL 101 STREAM ROUTE ASSERTIONS PASSED!
+==========================================================================
+==========================================================================
+      M3.9 PRODUCTION END-TO-END ORCHESTRATION & BYOK HARNESS             
+==========================================================================
+
+--- 1. COMPLETE TWO-TURN REAL-TOOL EXECUTION LOOP ---
+[PASS #1] Run started
+[PASS #2] E2E upstream URL is the server-owned Anthropic origin
+[PASS #3] E2E upstream URL does not contain the BYOK fixture
+[PASS #4] Upstream received exact BYOK key in header
+[PASS #5] Orchestrator paused at waiting-for-approval (actual: waiting-for-approval)
+[PASS #6] Exactly one approval pending
+[PASS #7] Found active execution attempt in runtime
+[PASS #8] E2E upstream URL is the server-owned Anthropic origin
+[PASS #9] E2E upstream URL does not contain the BYOK fixture
+[PASS #10] Upstream received exact BYOK key in header
+[PASS #11] Upstream turn 2 payload contains 3 messages (user, assistant, tool_result)
+[PASS #12] Tool result message is in user role
+[PASS #13] Block is tool_result
+[PASS #14] tool_use_id matches call-e2e-1
+[PASS #15] upstream turn-2 body does not contain the synthetic BYOK fixture
+[PASS #16] Orchestrator run completed after Turn 2 (actual: completed)
+[PASS #17] Tool handler executed exactly 1 time through gate
+[PASS #18] Conversation contains 4 canonical messages (user, assistant-call, tool-result, assistant-done)
+[PASS #19] Message 1 is user
+[PASS #20] Message 2 is assistant tool request
+[PASS #21] Message 3 is tool result envelope
+[PASS #22] Message 4 is final assistant message
+[PASS #23] orchestrator transcript does not contain the synthetic BYOK fixture
+
+--- 2. SECURITY & CREDENTIAL PRIVACY ASSERTIONS ---
+[PASS #24] serialized transcript does not contain the synthetic BYOK fixture
+
+--- 3. NEGATIVE CONTROLS: MISSING/INVALID BYOK KEY ---
+[PASS #25] Run fails immediately when BYOK key is missing
+[PASS #26] no-key orchestrator messages does not contain the synthetic BYOK fixture
+
+--- 4. NEGATIVE CONTROLS: RATE LIMIT (429) & UPSTREAM 500 ---
+[PASS #27] E2E upstream URL is the server-owned Anthropic origin
+[PASS #28] E2E upstream URL does not contain the BYOK fixture
+[PASS #29] Upstream received exact BYOK key in header
+[PASS #30] Run fails when provider returns 429 Rate Limit
+[PASS #31] 429 orchestrator messages does not contain the synthetic BYOK fixture
+[PASS #32] E2E upstream URL is the server-owned Anthropic origin
+[PASS #33] E2E upstream URL does not contain the BYOK fixture
+[PASS #34] Upstream received exact BYOK key in header
+[PASS #35] Run fails when provider returns 500 Server Error
+[PASS #36] 500 orchestrator messages does not contain the synthetic BYOK fixture
+
+--- 5. NEGATIVE CONTROLS: PREMATURE UPSTREAM EOF ---
+[PASS #37] E2E upstream URL is the server-owned Anthropic origin
+[PASS #38] E2E upstream URL does not contain the BYOK fixture
+[PASS #39] Upstream received exact BYOK key in header
+[PASS #40] Run fails closed when upstream stream closes prematurely without terminal event
+[PASS #41] eof orchestrator messages does not contain the synthetic BYOK fixture
+==========================================================================
+  SUCCESS: ALL 41 PRODUCTION E2E ASSERTIONS PASSED!
+==========================================================================
+==========================================================================
+           LOGICC PROVIDER CONFIG & ACCESS CONTROL HARNESS                
+==========================================================================
+
+--- Provider configuration ---
+[PASS #1] Logicc disabled by default (empty env)
+[PASS #2] anthropic-byok selectable
+[PASS #3] logicc selectable
+[PASS #4] logicc case-insensitive
+[PASS #5] Missing server credential reports not configured
+[PASS #6] Present server credential reports configured (boolean only)
+[PASS #7] Internal mode off by default
+[PASS #8] Internal mode enabled only when true
+[PASS #9] Snapshot marks Logicc selected
+[PASS #10] Snapshot marks internal mode
+[PASS #11] Snapshot boolean credential ready
+[PASS #12] config snapshot does not contain secret fixture
+[PASS #13] config snapshot does not contain secret fixture
+
+--- Internal-only access ---
+[PASS #14] Logicc not ready without internal mode
+[PASS #15] Public access fails closed without LOGICC_INTERNAL_MODE
+[PASS #16] Access marked restricted
+[PASS #17] restricted health does not contain secret fixture
+[PASS #18] Credential session fails without internal mode
+[PASS #19] ACCESS_RESTRICTED when internal mode off
+[PASS #20] Unavailable when credential missing
+[PASS #21] Safe unavailable status (no absent-vs-invalid leak)
+[PASS #22] missing-key health does not contain secret fixture
+[PASS #23] Ready when internal + credential + models configured
+[PASS #24] Access internal when enabled
+[PASS #25] Logicc does not require browser BYOK
+[PASS #26] ready health does not contain secret fixture
+
+--- Same-origin (not authentication) ---
+[PASS #27] Missing Origin allowed
+[PASS #28] Matching Origin allowed
+[PASS #29] Mismatched Origin rejected
+
+--- Model discovery & allowlist ---
+[PASS #30] Discovery uses fixed Logicc models URL
+[PASS #31] Discovery uses server credential
+[PASS #32] discovery request url does not contain secret fixture
+[PASS #33] Successful discovery
+[PASS #34] First discovery not from cache
+[PASS #35] Allowlist intersection keeps 2 models
+[PASS #36] Unlisted models excluded
+[PASS #37] Default model validated
+[PASS #38] discovery models does not contain secret fixture
+[PASS #39] discovery models does not contain secret fixture
+[PASS #40] Bounded cache hit within TTL
+[PASS #41] Cache avoids second upstream fetch
+[PASS #42] Discovery uses fixed Logicc models URL
+[PASS #43] Discovery uses server credential
+[PASS #44] discovery request url does not contain secret fixture
+[PASS #45] Cache miss after TTL
+[PASS #46] Expired cache refetches
+[PASS #47] Discovery uses fixed Logicc models URL
+[PASS #48] Discovery uses server credential
+[PASS #49] discovery request url does not contain secret fixture
+[PASS #50] Default outside allowlist rejected
+[PASS #51] Safe error for invalid default
+[PASS #52] Discovery error yields unavailable
+[PASS #53] PROVIDER_UNAVAILABLE on discovery failure
+[PASS #54] discovery failure does not contain secret fixture
+[PASS #55] Fixed models list ok
+[PASS #56] Unavailable/unallowed model rejected
+[PASS #57] MODEL_NOT_ALLOWED code
+
+--- Fixed upstream origin ---
+[PASS #58] Chat completions URL is fixed server-side
+[PASS #59] Completions under Logicc origin
+[PASS #60] Models under Logicc origin
+
+--- Credential non-leak ---
+[PASS #61] Credential session starts with server key
+[PASS #62] Auth header applied within request boundary
+[PASS #63] Released session does not re-apply credential
+[PASS #64] Browser BYOK header ignored (server key used)
+[PASS #65] Registry defaults to anthropic-byok
+[PASS #66] Registry can create Logicc adapter
+
+SUCCESS: ALL 66 LOGICC PROVIDER ASSERTIONS PASSED!
+==========================================================================
+              LOGICC ADAPTER & STREAM TRANSLATOR HARNESS                  
+==========================================================================
+
+--- Tool manifest parity ---
+[PASS #1] Exact registry parity count
+[PASS #2] Manifest has list_files
+[PASS #3] Risk parity list_files
+[PASS #4] Approval parity list_files
+[PASS #5] Manifest has read_file
+[PASS #6] Risk parity read_file
+[PASS #7] Approval parity read_file
+[PASS #8] Manifest has read_files
+[PASS #9] Risk parity read_files
+[PASS #10] Approval parity read_files
+[PASS #11] Manifest has create_file
+[PASS #12] Risk parity create_file
+[PASS #13] Approval parity create_file
+[PASS #14] Manifest has write_file
+[PASS #15] Risk parity write_file
+[PASS #16] Approval parity write_file
+[PASS #17] Manifest has apply_patch
+[PASS #18] Risk parity apply_patch
+[PASS #19] Approval parity apply_patch
+[PASS #20] Manifest has rename_file
+[PASS #21] Risk parity rename_file
+[PASS #22] Approval parity rename_file
+[PASS #23] Manifest has delete_file
+[PASS #24] Risk parity delete_file
+[PASS #25] Approval parity delete_file
+[PASS #26] Manifest has run_command
+[PASS #27] Risk parity run_command
+[PASS #28] Approval parity run_command
+[PASS #29] Manifest has start_process
+[PASS #30] Risk parity start_process
+[PASS #31] Approval parity start_process
+[PASS #32] Manifest has stop_command
+[PASS #33] Risk parity stop_command
+[PASS #34] Approval parity stop_command
+[PASS #35] Manifest has read_command_output
+[PASS #36] Risk parity read_command_output
+[PASS #37] Approval parity read_command_output
+[PASS #38] Manifest has run_project
+[PASS #39] Risk parity run_project
+[PASS #40] Approval parity run_project
+[PASS #41] Manifest has stop_project
+[PASS #42] Risk parity stop_project
+[PASS #43] Approval parity stop_project
+[PASS #44] Manifest has get_runtime_status
+[PASS #45] Risk parity get_runtime_status
+[PASS #46] Approval parity get_runtime_status
+[PASS #47] Manifest has run_build
+[PASS #48] Risk parity run_build
+[PASS #49] Approval parity run_build
+[PASS #50] Manifest has run_tests
+[PASS #51] Risk parity run_tests
+[PASS #52] Approval parity run_tests
+
+--- Canonical message translation ---
+[PASS #53] Valid request translates
+[PASS #54] Model id applied
+[PASS #55] n restricted to 1
+[PASS #56] stream true
+[PASS #57] System-message placement first
+[PASS #58] User follows system
+[PASS #59] One tool from manifest
+[PASS #60] Tool name from manifest
+[PASS #61] translated body has no credential fixture
+[PASS #62] Unknown tools rejected
+[PASS #63] Modified schemas/metadata rejected
+[PASS #64] Duplicate tools rejected
+[PASS #65] Excessive tool counts rejected
+[PASS #66] Continuation with tool result translates
+[PASS #67] Assistant tool_calls present
+[PASS #68] OpenAI tool message present
+[PASS #69] Tool-result correlation
+[PASS #70] Model-safe failed result translates
+[PASS #71] Model-safe denied result translates
+[PASS #72] Model-safe cancelled result translates
+[PASS #73] Model-safe stale result translates
+[PASS #74] Orphan tool result rejected (no auto-repair)
+[PASS #75] Duplicate tool result rejected
+
+--- Streaming semantics ---
+[PASS #76] Text-only emits text-delta
+[PASS #77] Usage emitted before terminal
+[PASS #78] Exactly one terminal (text-only)
+[PASS #79] Terminal is turn-completed
+[PASS #80] Usage before completion
+[PASS #81] No content events after terminal
+[PASS #82] text-only events has no credential fixture
+[PASS #83] No tool-call-started before id+name known
+[PASS #84] tool-call-started exactly once
+[PASS #85] Buffered + live argument fragments preserved
+[PASS #86] tool-call-completed exactly once
+[PASS #87] One terminal after tool call
+[PASS #88] Two interleaved tool-call-started
+[PASS #89] Two tool-call-completed
+[PASS #90] One terminal for multi tool
+[PASS #91] Conflict emits one terminal error
+[PASS #92] Conflict is protocol error
+[PASS #93] Empty tool name rejected
+[PASS #94] No terminal before EOF/[DONE]
+[PASS #95] EOF after finish_reason completes
+[PASS #96] Usage emitted on EOF finalize
+[PASS #97] [DONE] without finish → one terminal
+[PASS #98] [DONE] without finish is error
+[PASS #99] UPSTREAM_PROTOCOL_ERROR code
+[PASS #100] Malformed JSON → one terminal
+[PASS #101] Malformed → PROTOCOL_ERROR
+[PASS #102] Premature EOF is error
+[PASS #103] UPSTREAM_PREMATURE_CLOSE
+[PASS #104] Arguments after completion rejected
+[PASS #105] adapter health has no credential fixture
+
+SUCCESS: ALL 105 LOGICC ADAPTER ASSERTIONS PASSED!
+==========================================================================
+           FAKE-LOGICC END-TO-END VERTICAL SLICE HARNESS                  
+==========================================================================
+[PASS #1] Production Logicc chat URL is fixed
+
+--- 1. COMPLETE TOOL WORKFLOW (APPROVAL → EXECUTE ONCE → FINAL) ---
+[PASS #2] Browser stream request contains no Logicc/BYOK credential header
+[PASS #3] Upstream fetch uses injected Logicc endpoint
+[PASS #4] Handler does not forward browser BYOK in Logicc mode
+[PASS #5] upstream init headers keys: no Logicc credential
+[PASS #6] upstream init headers keys: no stale BYOK
+[PASS #7] Upstream Logicc request has no browser BYOK header
+[PASS #8] upstream body: no Logicc credential
+[PASS #9] upstream body: no stale BYOK
+[PASS #10] Paused at waiting-for-approval (actual: waiting-for-approval)
+[PASS #11] Exactly one M3.6 approval pending
+[PASS #12] Active execution attempt present
+[PASS #13] Executable tool is write_file
+[PASS #14] Browser stream request contains no Logicc/BYOK credential header
+[PASS #15] Upstream fetch uses injected Logicc endpoint
+[PASS #16] Handler does not forward browser BYOK in Logicc mode
+[PASS #17] upstream init headers keys: no Logicc credential
+[PASS #18] upstream init headers keys: no stale BYOK
+[PASS #19] Upstream Logicc request has no browser BYOK header
+[PASS #20] upstream body: no Logicc credential
+[PASS #21] upstream body: no stale BYOK
+[PASS #22] Turn 2 has messages array
+[PASS #23] Turn 2 includes OpenAI tool message
+[PASS #24] Tool result correlated by id
+[PASS #25] turn-2 messages: no Logicc credential
+[PASS #26] turn-2 messages: no stale BYOK
+[PASS #27] Run completed after continuation (actual: completed)
+[PASS #28] Tool executes exactly once through M3.6/M3.7
+[PASS #29] Server-owned Logicc credential used upstream
+[PASS #30] Conversation has user, assistant tool-call, tool result, final assistant
+[PASS #31] Message 1 user
+[PASS #32] Message 2 assistant tool request
+[PASS #33] Message 3 tool result
+[PASS #34] Message 4 final assistant
+[PASS #35] orchestrator transcript: no Logicc credential
+[PASS #36] orchestrator transcript: no stale BYOK
+[PASS #37] health-like status: no Logicc credential
+[PASS #38] health-like status: no stale BYOK
+
+--- 2. CANCELLATION ---
+[PASS #39] Browser stream request contains no Logicc/BYOK credential header
+[PASS #40] Upstream fetch uses injected Logicc endpoint
+[PASS #41] Handler does not forward browser BYOK in Logicc mode
+[PASS #42] upstream init headers keys: no Logicc credential
+[PASS #43] upstream init headers keys: no stale BYOK
+[PASS #44] Upstream Logicc request has no browser BYOK header
+[PASS #45] upstream body: no Logicc credential
+[PASS #46] upstream body: no stale BYOK
+[PASS #47] Cancellation reaches a settled state (actual: cancelled)
+
+--- 3. PUBLIC ACCESS FAILS CLOSED ---
+[PASS #48] Logicc without internal mode returns 403
+[PASS #49] ACCESS_RESTRICTED
+[PASS #50] restricted json: no Logicc credential
+[PASS #51] restricted json: no stale BYOK
+==========================================================================
+  SUCCESS: ALL 51 FAKE-LOGICC E2E ASSERTIONS PASSED!
+==========================================================================
+=== AUTH CONFIG FAIL-CLOSED ===
+[PASS] missing AUTH_SESSION_SECRET
+[PASS] missing admin credentials
+[PASS] missing DEVBOX_TOKEN_SECRET
+[PASS] malformed password file does not fall back to env
+[PASS] short AUTH_SESSION_SECRET rejected
+=== ALL CONFIG FAIL-CLOSED TESTS PASSED ===
+=== AUTH PASSWORD & CONFIG FAIL-CLOSED TESTS ===
+--- 1. Explicit credential verification ---
+[PASS] Explicit credentials verified.
+--- 2. PBKDF2 hashing & verification ---
+[PASS] PBKDF2 hashing and constant-time verification.
+--- 3. Plaintext stored hash rejection ---
+[PASS] Plaintext stored values strictly rejected.
+--- 4. Password update, persistence, session invalidation ---
+[PASS] Password update persists and invalidates prior sessions.
+--- 5. Rejected legacy bootstrap defaults ---
+[PASS] Legacy bootstrap password rejected.
+--- 6. Generation survives simulated process restart ---
+[PASS] Credential generation persists across restart (file-backed).
+--- 7. Password persistence failure does not activate new credential ---
+[PASS] Persistence failure leaves prior credential active.
+--- 8. Overlapping password changes: serialize, reject stale, persist-fail isolation ---
+[PASS] Overlap: active and persisted agree; stale queued change cannot overwrite.
+[PASS] Persist failure after success neither activates proposal nor rolls back.
+=== ALL AUTH PASSWORD TESTS PASSED ===
+================================================
+  AUTH & SESSION HARDENING REGRESSION SUITE
+================================================
+
+--- 1. Valid credentials mint signed session ---
+[PASS] Session token signing verified.
+
+--- 2. Reject malformed, tampered, expired, invalid-claim sessions ---
+[PASS] Malformed, tampered, expired, and invalid-claim sessions rejected.
+
+--- 3. Multi-transport request auth ---
+[PASS] Multi-transport authentication verified.
+
+--- 4. Session invalidation after password change ---
+[PASS] Credential generation invalidates prior sessions.
+
+================================================
+  SUCCESS: AUTH & SESSION SUITE PASSED
+================================================
+=== Testing CoderXP Live Preview Link Store & Events ===
+[PASS] 128-bit slug generated correctly: 126cd6ad76c062c84b26ced52d1b1e03
+[PASS] Link resolves before revocation
+[PASS] T2 event recorded on creation: evt-test-proj-1789132701646-1-1789132701646
+[PASS] Revoked link successfully rejected
+[PASS] T1 event recorded on revocation: evt-test-proj-1789132701646-2-1789132701648
+
+[SUCCESS] ALL LIVE PREVIEW UNIT TESTS PASSED!
+==========================================================================
+       CODERXP PREVIEW ROUTER ISOLATION & FAIL-CLOSED REGRESSION TEST     
+==========================================================================
+
+--- 1. Testing isValidContainerIp SSRF & Loopback Filter ---
+[PASS] All loopback, link-local, unspecified, and invalid IPs rejected.
+[PASS] Valid container private IPs accepted.
+
+--- 2. Testing resolveContainerDestination Fail-Closed Guarantees ---
+[PASS] Missing project ID fails closed with 502.
+[PASS] Path-traversal project ID fails closed with 502.
+[PASS] Missing, negative, zero, and out-of-range ports fail closed with 502.
+[PASS] Non-existent container fails closed with 502 (error: not found on Docker network).
+
+--- 3. Testing Loopback Honeypot Isolation via Live HTTP Request ---
+[PASS] Request returned status 404. Honeypot hits: 0 (Zero loopback contact verified).
+
+==========================================================================
+   SUCCESS: ALL PREVIEW ROUTER ISOLATION REGRESSION TESTS PASSED (100%)   
+==========================================================================
