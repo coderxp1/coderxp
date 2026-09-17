@@ -113,8 +113,11 @@ function parsePasswordFileContent(content: string): CredentialState | null {
   const hash = lines[0];
   if (!hash.startsWith("pbkdf2$100000$")) return null;
   let generation = 1;
-  if (lines[1] && /^\d+$/.test(lines[1])) {
-    generation = parseInt(lines[1], 10);
+  if (lines.length > 1) {
+    if (!/^\d+$/.test(lines[1])) return null;
+    const parsedGen = parseInt(lines[1], 10);
+    if (!Number.isSafeInteger(parsedGen) || parsedGen < 1) return null;
+    generation = parsedGen;
   }
   return { passwordHash: hash, generation };
 }
@@ -202,10 +205,6 @@ export const ADMIN_CONFIG = {
   username: "coderxpadmin",
   get password(): string {
     return getCredentialState().passwordHash;
-  },
-  set password(val: string) {
-    const state = getCredentialState();
-    state.passwordHash = val;
   },
 };
 
