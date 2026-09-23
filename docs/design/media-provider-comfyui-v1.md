@@ -1,10 +1,12 @@
-# ComfyUI Media Provider — Design v1
+# ComfyUI Media Provider — Design v1.1
 
 **Status:** Draft for review  
-**Branch:** `feat/media-provider-design`  
-**Author:** GPU/Media stream (dev-alex)  
+**Branch:** `feat/media-provider-v1.1`  
+**Department:** GPU/Media stream  
+**Accountable:** Klaus  
 **Date:** 2026-09-23  
-**Implements:** `IMediaJobService` from `lib/server/providers/types.ts` (merged after PR #4)
+**Implements:** `IMediaJobService` from `lib/server/providers/types.ts` (merged after PR #4)  
+**Supersedes:** PR #5 (`feat/media-provider-design`)
 
 ---
 
@@ -14,11 +16,15 @@ This document specifies the design for `ComfyUiMediaJobService`, the concrete im
 
 **What this is NOT:** implementation code. This PR contains only the design document. The implementation PR follows after design review.
 
+**Node constraint:** ComfyUI v0.36.0, hardened container, **native nodes only**. No custom nodes will ever be installed (no WanVideoWrapper, no VideoHelperSuite, no ComfyUI-Manager). The workflow templates in §2 use only nodes available in a stock ComfyUI v0.36.0 installation.
+
+**Runtime assumption:** Node.js ≥ 22. Built-in `fetch` (WHATWG Fetch API) and built-in `WebSocket` are used for all HTTP and WebSocket communication with ComfyUI. No new npm packages are added.
+
 ---
 
 ## 1. ComfyUI API Surface
 
-ComfyUI v0.36.0 exposes an HTTP + WebSocket API on `127.0.0.1:8188` (loopback only — see Authentication below).
+ComfyUI v0.36.0 exposes an HTTP + WebSocket API on `127.0.0.1:8188` (loopback only — see §1.3).
 
 ### 1.1 HTTP Endpoints Used
 
@@ -71,7 +77,7 @@ Returns execution history for a specific prompt. Empty object `{}` means the pro
     "outputs": {
       "<output_node_id>": {
         "images": [{ "filename": "cxp_img_00001_.png", "subfolder": "", "type": "output" }],
-        "gifs":   [{ "filename": "cxp_vid_00001_.mp4",  "subfolder": "", "type": "output" }]
+        "gifs":   [{ "filename": "cxp_vid_00001_.webp", "subfolder": "", "type": "output" }]
       }
     },
     "status": { "status_str": "success", "completed": true }
@@ -87,13 +93,13 @@ The provider uses this as a fallback poll when the WebSocket connection drops. P
 
 Downloads a generated file by name.
 
-| Parameter  | Required | Description |
-|------------|----------|-------------|
-| `filename` | ✓        | File name from the history outputs |
-| `subfolder` |         | Subdirectory inside type folder (usually empty) |
-| `type`     |          | `input` / `temp` / `output` (default: `output`) |
+| Parameter   | Required | Description |
+|-------------|----------|-------------|
+| `filename`  | ✓        | File name from the history outputs |
+| `subfolder` |          | Subdirectory inside type folder (usually empty) |
+| `type`      |          | `input` / `temp` / `output` (default: `output`) |
 
-Returns raw bytes with the appropriate `Content-Type` (`image/png` or `video/mp4`). The provider always uses `type=output`.
+Returns raw bytes with the appropriate `Content-Type` (`image/png` or `image/webp`). The provider always uses `type=output`.
 
 ---
 
@@ -118,6 +124,12 @@ ComfyUI stops the running prompt and emits `execution_interrupted` on the WebSoc
 
 ---
 
+#### `GET /object_info` — Node availability
+
+Called once at startup to discover which native output nodes are available in this ComfyUI build. Used to select the video output node at integration time (see §2.4).
+
+---
+
 ### 1.2 WebSocket — Real-Time Progress
 
 Connect once per job:
@@ -133,16 +145,16 @@ The `clientId` query parameter must match the `client_id` submitted with `/promp
 { "type": "<event_type>", "data": { ... } }
 ```
 
-| Event type             | When                                  | Key fields in `data`                              |
-|------------------------|---------------------------------------|---------------------------------------------------|
-| `status`               | Queue depth changes                   | `status.exec_info.queue_remaining`                |
-| `execution_start`      | Workflow begins executing             | `prompt_id`                                       |
-| `execution_cached`     | Node skipped (result cached)          | `nodes`, `prompt_id`                              |
-| `executing`            | A node starts; or workflow finishes   | `node` (null = done), `prompt_id`                 |
-| `progress`             | Sampler denoising step                | `value`, `max`, `node`                            |
-| `executed`             | Node finished with output             | `node`, `output`, `prompt_id`                     |
-| `execution_error`      | Unrecoverable failure                 | `exception_message`, `exception_type`, `prompt_id`|
-| `execution_interrupted`| Prompt was cancelled                  | `prompt_id`, `node_id`                            |
+| Event type              | When                                 | Key fields in `data`                               |
+|-------------------------|--------------------------------------|----------------------------------------------------|
+| `status`                | Queue depth changes                  | `status.exec_info.queue_remaining`                 |
+| `execution_start`       | Workflow begins executing            | `prompt_id`                                        |
+| `execution_cached`      | Node skipped (result cached)         | `nodes`, `prompt_id`                               |
+| `executing`             | A node starts; or workflow finishes  | `node` (null = done), `prompt_id`                  |
+| `progress`              | Sampler denoising step               | `value`, `max`, `node`                             |
+| `executed`              | Node finished with output            | `node`, `output`, `prompt_id`                      |
+| `execution_error`       | Unrecoverable failure                | `exception_message`, `exception_type`, `prompt_id` |
+| `execution_interrupted` | Prompt was cancelled                 | `prompt_id`, `node_id`                             |
 
 **Completion signal:** `executing` event with `data.node === null` and `data.prompt_id` matching the submitted prompt. At that point, `outputs` are available via `GET /history/{prompt_id}`.
 
@@ -150,24 +162,15 @@ Binary frames (sampler preview PNGs) are received during image generation. The p
 
 ---
 
-### 1.3 Authentication
+### 1.3 Connectivity
 
-ComfyUI is bound to `127.0.0.1:8188` inside the hardened container on the GPU host. It is **not reachable from the public internet**. ComfyUI has no token-based authentication of its own.
+The provider reads `COMFYUI_URL` (e.g. `http://127.0.0.1:8188`) and knows nothing about SSH tunnels or key paths. Tunnel setup is an infrastructure concern, not a provider concern.
 
-The provider reaches it via an SSH tunnel maintained by the server process:
-
-```
-ssh -i ~/.ssh/coderxp_alex -o IdentitiesOnly=yes -N \
-    -L 8188:127.0.0.1:8188 dev-alex@31.47.228.14
-```
-
-**Security properties:**
-- Network isolation (loopback binding + SSH tunnel) is the sole authentication layer.
-- The tunnel endpoint is never exposed to app clients, directly or indirectly.
-- The provider validates and fills whitelisted parameters into fixed templates before any data reaches ComfyUI — arbitrary graphs from clients are rejected before touching the tunnel.
+- **dev:** SSH tunnel to loopback; prod: loopback, set by host configuration.
+- The provider's only network dependency is that `COMFYUI_URL` is reachable when a job is submitted.
+- If the URL is unreachable, `POST /prompt` fails with a connection error. The provider surfaces this as `ComfyUnavailableError` and does not queue the job.
 - No credentials or secrets flow through ComfyUI's HTTP interface.
-
-If the tunnel is down, `POST /prompt` fails with a connection-refused error. The provider surfaces this as `ComfyUnavailableError` and does not queue the job.
+- The provider validates and fills whitelisted parameters into fixed templates before any data reaches ComfyUI — arbitrary graphs from clients are rejected before the network call.
 
 ---
 
@@ -179,16 +182,16 @@ The provider maintains **two fixed, server-side workflow graphs** stored under `
 
 ### 2.2 Whitelisted Parameters
 
-| Parameter        | Type    | Image | Video | Constraints                                    |
-|------------------|---------|:-----:|:-----:|------------------------------------------------|
-| `prompt`         | string  | ✓     | ✓     | Required. max 1 000 chars.                     |
-| `negativePrompt` | string  | ✓     | ✓     | Optional. max 1 000 chars.                     |
-| `width`          | integer | ✓     | —     | 64–1024, divisible by 8. Default 512.          |
-| `height`         | integer | ✓     | —     | 64–1024, divisible by 8. Default 512.          |
-| `seed`           | uint32  | ✓     | ✓     | [0, 4 294 967 295]. Default: random.           |
+| Parameter        | Type    | Image | Video | Constraints                                     |
+|------------------|---------|:-----:|:-----:|-------------------------------------------------|
+| `prompt`         | string  | ✓     | ✓     | Required. max 1 000 chars.                      |
+| `negativePrompt` | string  | ✓     | ✓     | Optional. max 1 000 chars.                      |
+| `width`          | integer | ✓     | —     | 64–1024, divisible by 8. Default 512.           |
+| `height`         | integer | ✓     | —     | 64–1024, divisible by 8. Default 512.           |
+| `seed`           | uint32  | ✓     | ✓     | [0, 4 294 967 295]. Default: random.            |
 | `steps`          | integer | ✓     | ✓     | Image [1, 30] default 4. Video [1, 50] default 30. |
-| `durationFrames` | integer | —     | ✓     | [1, 81]. Default 49 (~3 s @ 16 fps).           |
-| `fps`            | integer | —     | ✓     | Default 16.                                    |
+| `durationFrames` | integer | —     | ✓     | [1, 81]. Default 49 (~3 s @ 16 fps).            |
+| `fps`            | integer | —     | ✓     | Default 16.                                     |
 
 Any parameter outside this list, or any value outside the stated range, is a validation error. The job is rejected before any GPU resources are touched.
 
@@ -196,101 +199,84 @@ Any parameter outside this list, or any value outside the stated range, is a val
 
 **File:** `lib/server/providers/workflows/flux1-schnell.json`
 
-Uses the Advanced Sampling API (native Flux ComfyUI nodes). Substitution tokens are `__UPPER_SNAKE_CASE__` strings replaced at job-submit time.
+Uses `CheckpointLoaderSimple` to load the all-in-one `flux1-schnell-fp8.safetensors` file (provides MODEL, CLIP, and VAE outputs in one node). Substitution tokens are `__UPPER_SNAKE_CASE__` strings replaced at job-submit time.
 
 ```json
 {
   "1": {
-    "class_type": "UNETLoader",
+    "class_type": "CheckpointLoaderSimple",
     "inputs": {
-      "unet_name": "flux1-schnell-fp8.safetensors",
-      "weight_dtype": "fp8_e4m3fn"
+      "ckpt_name": "flux1-schnell-fp8.safetensors"
     }
   },
   "2": {
-    "class_type": "DualCLIPLoader",
+    "class_type": "CLIPTextEncode",
     "inputs": {
-      "clip_name1": "t5xxl_fp8_e4m3fn.safetensors",
-      "clip_name2": "clip_l.safetensors",
-      "type": "flux",
-      "device": "default"
+      "clip": ["1", 1],
+      "text": "__PROMPT__"
     }
   },
   "3": {
-    "class_type": "VAELoader",
-    "inputs": { "vae_name": "ae.safetensors" }
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "clip": ["1", 1],
+      "text": ""
+    }
   },
   "4": {
-    "class_type": "CLIPTextEncode",
-    "inputs": { "clip": ["2", 0], "text": "__PROMPT__" }
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": "__WIDTH__",
+      "height": "__HEIGHT__",
+      "batch_size": 1
+    }
   },
   "5": {
-    "class_type": "FluxGuidance",
-    "inputs": { "conditioning": ["4", 0], "guidance": 3.5 }
-  },
-  "6": {
-    "class_type": "EmptySD3LatentImage",
-    "inputs": { "width": "__WIDTH__", "height": "__HEIGHT__", "batch_size": 1 }
-  },
-  "7": {
-    "class_type": "KSamplerSelect",
-    "inputs": { "sampler_name": "euler" }
-  },
-  "8": {
-    "class_type": "BasicScheduler",
+    "class_type": "KSampler",
     "inputs": {
       "model": ["1", 0],
-      "scheduler": "simple",
+      "positive": ["2", 0],
+      "negative": ["3", 0],
+      "latent_image": ["4", 0],
+      "seed": "__SEED__",
       "steps": "__STEPS__",
+      "cfg": 1.0,
+      "sampler_name": "euler",
+      "scheduler": "simple",
       "denoise": 1.0
     }
   },
-  "9": {
-    "class_type": "SamplerCustomAdvanced",
+  "6": {
+    "class_type": "VAEDecode",
     "inputs": {
-      "noise":        ["10", 0],
-      "guider":       ["11", 0],
-      "sampler":      ["7",  0],
-      "sigmas":       ["8",  0],
-      "latent_image": ["6",  0]
+      "samples": ["5", 0],
+      "vae": ["1", 2]
     }
   },
-  "10": {
-    "class_type": "RandomNoise",
-    "inputs": { "noise_seed": "__SEED__" }
-  },
-  "11": {
-    "class_type": "BasicGuider",
-    "inputs": { "model": ["1", 0], "conditioning": ["5", 0] }
-  },
-  "12": {
-    "class_type": "VAEDecode",
-    "inputs": { "samples": ["9", 0], "vae": ["3", 0] }
-  },
-  "13": {
+  "7": {
     "class_type": "SaveImage",
-    "inputs": { "images": ["12", 0], "filename_prefix": "cxp_img" }
+    "inputs": {
+      "images": ["6", 0],
+      "filename_prefix": "cxp_img"
+    }
   }
 }
 ```
 
-**Required model files** (read-only model store):
-- `image/checkpoints/flux1-schnell-fp8.safetensors`
-- `image/clip/t5xxl_fp8_e4m3fn.safetensors`
-- `image/clip/clip_l.safetensors`
-- `image/vae/ae.safetensors`
+**Required model file** (ComfyUI standard folder, read-only):
+- `checkpoints/flux1-schnell-fp8.safetensors`
 
 **Substitution map:**
 
-| Token       | Source field      | Default |
-|-------------|-------------------|---------|
-| `__PROMPT__`  | `req.prompt`      | — (required) |
-| `__WIDTH__`   | `req.width`       | 512 |
-| `__HEIGHT__`  | `req.height`      | 512 |
-| `__STEPS__`   | `req.steps`       | 4 |
-| `__SEED__`    | `req.seed`        | `Math.floor(Math.random() * 4294967295)` |
+| Token         | Source field  | Default |
+|---------------|---------------|---------|
+| `__PROMPT__`  | `req.prompt`  | — (required) |
+| `__WIDTH__`   | `req.width`   | 512 |
+| `__HEIGHT__`  | `req.height`  | 512 |
+| `__STEPS__`   | `req.steps`   | 4 |
+| `__SEED__`    | `req.seed`    | `Math.floor(Math.random() * 4294967295)` |
 
-Negative prompt is not used for Flux-schnell (the model is a flow-matching distilled model and does not use a negative conditioning path). The `negativePrompt` field is accepted by the API for forward-compatibility but silently ignored in the image template.
+Node 3 is a fixed empty-string negative conditioning. The `negativePrompt` field is accepted by the API for forward-compatibility but silently ignored in the image template — Flux-schnell is a flow-matching distilled model without a conventional negative conditioning path.
 
 ---
 
@@ -298,103 +284,107 @@ Negative prompt is not used for Flux-schnell (the model is a flow-matching disti
 
 **File:** `lib/server/providers/workflows/wan21-t2v.json`
 
+Uses only native ComfyUI v0.36.0 nodes, following the official Wan 2.1 t2v example. No custom nodes are required or permitted.
+
 ```json
 {
   "1": {
-    "class_type": "WanVideoModelLoader",
+    "class_type": "UNETLoader",
     "inputs": {
-      "model":           "wan2.1_t2v_1.3B_fp16.safetensors",
-      "base_precision":  "fp16",
-      "quantization":    "disabled",
-      "load_device":     "offload_device",
-      "attention_mode":  "sdpa"
+      "unet_name": "wan2.1_t2v_1.3B_fp16.safetensors",
+      "weight_dtype": "default"
     }
   },
   "2": {
-    "class_type": "WanVideoT5TextEncoder",
+    "class_type": "ModelSamplingSD3",
     "inputs": {
-      "t5":        "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
-      "precision": "bf16"
+      "model": ["1", 0],
+      "shift": 8.0
     }
   },
   "3": {
-    "class_type": "WanVideoVAE",
-    "inputs": { "vae": "wan_2.1_vae.safetensors" }
+    "class_type": "CLIPLoader",
+    "inputs": {
+      "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "type": "wan"
+    }
   },
   "4": {
-    "class_type": "WanVideoTextEncode",
+    "class_type": "VAELoader",
     "inputs": {
-      "t5":               ["2", 0],
-      "positive_prompt":  "__PROMPT__",
-      "negative_prompt":  "__NEGATIVE_PROMPT__",
-      "force_offload":    true
+      "vae_name": "wan_2.1_vae.safetensors"
     }
   },
   "5": {
-    "class_type": "WanVideoEmptyEmbeds",
+    "class_type": "CLIPTextEncode",
     "inputs": {
-      "width":       832,
-      "height":      480,
-      "num_frames":  "__DURATION_FRAMES__",
-      "batch_size":  1,
-      "force_offload": true
+      "clip": ["3", 0],
+      "text": "__PROMPT__"
     }
   },
   "6": {
-    "class_type": "WanVideoSampler",
+    "class_type": "CLIPTextEncode",
     "inputs": {
-      "model":              ["1", 0],
-      "positive":           ["4", 0],
-      "negative":           ["4", 1],
-      "embeds":             ["5", 0],
-      "steps":              "__STEPS__",
-      "cfg":                5.0,
-      "seed":               "__SEED__",
-      "sampler":            "dpmpp_2m",
-      "scheduler":          "linear",
-      "riflex_freq_index":  0,
-      "force_offload":      true
+      "clip": ["3", 0],
+      "text": "__NEGATIVE_PROMPT__"
     }
   },
   "7": {
-    "class_type": "WanVideoDecoder",
+    "class_type": "EmptyHunyuanLatentVideo",
     "inputs": {
-      "samples":                    ["6", 0],
-      "vae":                        ["3", 0],
-      "enable_vae_tiling":          true,
-      "tile_sample_min_height":     272,
-      "tile_sample_min_width":      272,
-      "tile_overlap_factor_height": 0.2,
-      "tile_overlap_factor_width":  0.2
+      "width": 832,
+      "height": 480,
+      "length": "__DURATION_FRAMES__",
+      "batch_size": 1
     }
   },
   "8": {
-    "class_type": "VHS_VideoCombine",
+    "class_type": "KSampler",
     "inputs": {
-      "images":           ["7", 0],
-      "frame_rate":       "__FPS__",
-      "loop_count":       0,
-      "filename_prefix":  "cxp_vid",
-      "format":           "video/h264-mp4",
-      "pix_fmt":          "yuv420p",
-      "crf":              19,
-      "save_metadata":    false,
-      "pingpong":         false,
-      "save_output":      true
+      "model": ["2", 0],
+      "positive": ["5", 0],
+      "negative": ["6", 0],
+      "latent_image": ["7", 0],
+      "seed": "__SEED__",
+      "steps": "__STEPS__",
+      "cfg": 6.0,
+      "sampler_name": "uni_pc",
+      "scheduler": "simple",
+      "denoise": 1.0
+    }
+  },
+  "9": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": ["8", 0],
+      "vae": ["4", 0]
+    }
+  },
+  "10": {
+    "class_type": "SaveAnimatedWEBP",
+    "inputs": {
+      "images": ["9", 0],
+      "filename_prefix": "cxp_vid",
+      "fps": "__FPS__",
+      "lossless": false,
+      "quality": 80,
+      "method": "default"
     }
   }
 }
 ```
 
-**Required model files:**
-- `video/diffusion_models/wan2.1_t2v_1.3B_fp16.safetensors`
-- `video/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors`
-- `video/vae/wan_2.1_vae.safetensors`
+**Video output node — confirmed at integration time:** At startup, `GET /object_info` is called to discover available node types. If `CreateVideo` + `SaveVideo` (mp4) are present in this build, node 10 is replaced with that combination for mp4 output. Otherwise, `SaveAnimatedWEBP` (shown above) is used as the fallback. The integration test (§5.2) confirms which path is live.
+
+**Required model files** (ComfyUI standard folders, read-only):
+- `diffusion_models/wan2.1_t2v_1.3B_fp16.safetensors`
+- `text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors`
+- `vae/wan_2.1_vae.safetensors`
 
 **Substitution map:**
 
-| Token                | Source field         | Default |
-|----------------------|----------------------|---------|
+| Token                  | Source field         | Default |
+|------------------------|----------------------|---------|
 | `__PROMPT__`           | `req.prompt`         | — (required) |
 | `__NEGATIVE_PROMPT__`  | `req.negativePrompt` | `""` |
 | `__DURATION_FRAMES__`  | `req.durationFrames` | 49 (~3 s @ 16 fps) |
@@ -427,7 +417,17 @@ interface InternalJobRecord extends JobRecord {
 }
 ```
 
-State is held in an in-process `Map<jobId, InternalJobRecord>`. On every state transition the map is serialised to `$COMFY_JOB_STORE_PATH` (default: `/tmp/comfy-jobs.json`) so the server can recover queued/running jobs across a restart (though a restart during `RUNNING` transitions the job to `FAILED` since the ComfyUI connection is lost).
+State is held in an in-process `Map<jobId, InternalJobRecord>`. On every state transition, an event line is **appended** to `$COMFY_DATA_DIR/jobs.jsonl` (the append-only job store). Each line is a self-contained JSON object:
+
+```json
+{ "ts": 1716000000000, "jobId": "...", "status": "RUNNING", "comfyPromptId": "...", "startedAt": 1716000000000 }
+```
+
+On startup, the provider reads the JSONL file line by line, applying each event to reconstruct the in-process map. A partially written last line (from a crash mid-write) is detected by failed JSON.parse and discarded — the previous complete line's state is used. This guarantees that a crash mid-write cannot corrupt job history.
+
+`COMFY_DATA_DIR` has **no default**. The provider fails at startup if this variable is unset or if the directory is not writable. No `/tmp` paths are used anywhere in this service.
+
+A restart during `RUNNING` marks that job as `FAILED` on recovery, since the ComfyUI WebSocket connection is lost.
 
 ### 3.3 IMediaJobService: Method Contracts
 
@@ -437,7 +437,7 @@ State is held in an in-process `Map<jobId, InternalJobRecord>`. On every state t
 2. **Per-user guard:** look up any `QUEUED` or `RUNNING` record for `userId`. If found, throw `UserJobLimitError` (HTTP 429 at the route layer).
 3. **Compile template** for the domain (`req.modelId` maps to `image` or `video`). Substitute all tokens; deep-copy the template JSON; never mutate the cached template.
 4. **Assign** `jobId` (UUID v4), `comfyClientId` (UUID v4), `createdAt` (epoch ms), `timeoutAt`.
-5. Write `JobRecord` with `status: "QUEUED"` to the in-process store; persist to disk.
+5. Write `JobRecord` with `status: "QUEUED"` event to the JSONL store; update in-process map.
 6. **Enqueue** a `QueueEntry` on the internal `SerialQueue`.
 7. Return `{ jobId, status: "QUEUED" }` immediately — before execution starts.
 
@@ -448,31 +448,26 @@ A single async worker loop that processes one job at a time:
 ```
 loop:
   entry = await queue.dequeue()
-  record.status = "RUNNING"; record.startedAt = now()
-  persist()
+  append { status: "RUNNING", startedAt: now() } to jobs.jsonl; update map
   try:
     response = POST /prompt { prompt: entry.graph, client_id: entry.comfyClientId }
     record.comfyPromptId = response.prompt_id
-    persist()
+    append { comfyPromptId: response.prompt_id } to jobs.jsonl; update map
     await runWithTimeout(watchViaWebSocket(entry), record.timeoutAt)
   catch TimeoutError:
     POST /queue { delete: [record.comfyPromptId] }
-    record.status = "TIMED_OUT"
-    persist()
+    append { status: "TIMED_OUT" } to jobs.jsonl; update map
   catch ExecutionError as e:
-    record.status = "FAILED"; record.error = e.message
-    persist()
+    append { status: "FAILED", error: e.message } to jobs.jsonl; update map
   finally:
     proceed to next entry
 ```
 
-`watchViaWebSocket(entry)` opens `ws://127.0.0.1:8188/ws?clientId=<entry.comfyClientId>` and resolves on `executing { node: null, prompt_id: matching }`, or rejects on `execution_error` / `execution_interrupted`.
+`watchViaWebSocket(entry)` opens `ws://<COMFYUI_URL>/ws?clientId=<entry.comfyClientId>` and resolves on `executing { node: null, prompt_id: matching }`, or rejects on `execution_error` / `execution_interrupted`.
 
 On `executing { node: null }`:
-- `record.status = "COMPLETED"`
-- `record.completedAt = now()`
-- `record.outputFile` = first filename from `GET /history/{prompt_id}` outputs
-- persist
+- Append `{ status: "COMPLETED", completedAt: now(), outputFile: "<filename>" }` to jobs.jsonl; update map
+- `outputFile` is the first filename from `GET /history/{prompt_id}` outputs
 
 #### Timeouts
 
@@ -483,15 +478,15 @@ On `executing { node: null }`:
 
 #### `getJobStatus(userId, jobId): Promise<JobRecord>`
 
-- Look up `jobId` in the store. If not found or `record.userId !== userId`, throw `NotFoundError`.
+- Look up `jobId` in the in-process map. If not found or `record.userId !== userId`, throw `NotFoundError`.
 - Return the `JobRecord` (public fields only — strip `comfyClientId`, `comfyPromptId`, `timeoutAt`).
 
 #### `cancelJob(userId, jobId): Promise<boolean>`
 
 | Current status | Action | Returns |
 |----------------|--------|---------|
-| `QUEUED` | Remove from internal queue; set `status: "CANCELLED"` | `true` |
-| `RUNNING` | `POST /queue { delete: [comfyPromptId] }`; set `status: "CANCELLED"` on `execution_interrupted` WS event | `true` |
+| `QUEUED` | Remove from internal queue; append `{ status: "CANCELLED" }` to jobs.jsonl | `true` |
+| `RUNNING` | `POST /queue { delete: [comfyPromptId] }`; append `{ status: "CANCELLED" }` on `execution_interrupted` WS event | `true` |
 | Terminal (`COMPLETED`, `FAILED`, `CANCELLED`, `TIMED_OUT`) | No-op | `false` |
 
 If `userId !== record.userId`, throw `NotFoundError`.
@@ -499,9 +494,9 @@ If `userId !== record.userId`, throw `NotFoundError`.
 #### `getJobArtifact(userId, jobId): Promise<{ stream, mimeType }>`
 
 - Validate `status === "COMPLETED"`. Throw `JobNotCompleteError` otherwise.
-- If local cache file exists (see §4), return a `ReadStream` from it.
+- If local cache file exists at `$COMFY_DATA_DIR/artifacts/<jobId>.<ext>`, return a `ReadStream` from it.
 - Otherwise: `GET /view?filename=<outputFile>&type=output` → pipe the response stream.
-- `mimeType`: `"image/png"` for image domain, `"video/mp4"` for video domain.
+- `mimeType`: `"image/png"` for image domain, `"image/webp"` or `"video/mp4"` for video domain (matches the output node selected at startup).
 
 ---
 
@@ -513,13 +508,15 @@ ComfyUI writes files to `output/` inside its container. The provider retrieves t
 
 ### 4.2 Provider-Side Artifact Cache
 
+`COMFY_DATA_DIR` is the single data root for the service. It has **no default** and the provider fails at startup if it is unset or not writable.
+
 On the first successful `getJobArtifact` call the provider downloads and stores the artifact at:
 
 ```
-$COMFY_ARTIFACT_DIR/<jobId>.<ext>
+$COMFY_DATA_DIR/artifacts/<jobId>.<ext>
 ```
 
-`COMFY_ARTIFACT_DIR` defaults to `/tmp/comfy-artifacts`. Extension is `png` (image) or `mp4` (video). Subsequent calls stream from this local file.
+Extension is `png` (image) or `webp`/`mp4` (video, matching the output node). Subsequent calls stream from this local file. The job JSONL store is at `$COMFY_DATA_DIR/jobs.jsonl`.
 
 ### 4.3 Retention Policy
 
@@ -527,10 +524,13 @@ $COMFY_ARTIFACT_DIR/<jobId>.<ext>
 |---------|--------|
 | Job completes | Artifact stored for `COMFY_ARTIFACT_TTL_HOURS` hours (default 24) |
 | Job fails or is cancelled | No artifact written |
-| TTL elapsed | Sweep deletes local file; `record.outputFile` cleared; `getJobArtifact` returns `ArtifactExpiredError` (HTTP 410) |
-| Job store cap exceeded | Oldest terminal records evicted (LRU) when count > `COMFY_MAX_JOB_RECORDS` (default 1 000) |
+| TTL elapsed | Sweep deletes local file; `outputFile` cleared in map and jobs.jsonl; `getJobArtifact` returns `ArtifactExpiredError` (HTTP 410) |
+| Byte cap exceeded | Oldest artifacts deleted first (oldest-first by `completedAt`) until total bytes under `COMFY_ARTIFACT_MAX_BYTES` (default 20 GB). Checked on every sweep. |
+| Record cap exceeded | Oldest terminal records evicted (LRU by `createdAt`) when count > `COMFY_MAX_JOB_RECORDS` (default 1 000) |
 
 Background sweep interval: `COMFY_SWEEP_INTERVAL_MINUTES` (default 15).
+
+**Eviction order for byte cap:** oldest-first by `completedAt`. Eviction stops as soon as total bytes drop below `COMFY_ARTIFACT_MAX_BYTES`. Eviction of a record's artifact file is followed by appending a `{ status: "ARTIFACT_EVICTED" }` event to jobs.jsonl.
 
 ### 4.4 Artifact Streaming to Client
 
@@ -547,14 +547,14 @@ Every state transition emits a structured JSON log line to stdout:
 
 ```json
 {
-  "ts":           1716000000000,
-  "level":        "info",
-  "event":        "job.state_change",
-  "jobId":        "...",
-  "userId":       "...",
-  "domain":       "image",
-  "fromStatus":   "QUEUED",
-  "toStatus":     "RUNNING",
+  "ts":            1716000000000,
+  "level":         "info",
+  "event":         "job.state_change",
+  "jobId":         "...",
+  "userId":        "...",
+  "domain":        "image",
+  "fromStatus":    "QUEUED",
+  "toStatus":      "RUNNING",
   "comfyPromptId": "..."
 }
 ```
@@ -569,7 +569,7 @@ Every state transition emits a structured JSON log line to stdout:
 
 **File:** `scripts/test-provider-comfyui.ts`
 
-All unit tests inject mock HTTP and WebSocket clients via the constructor — no real network, no GPU, no ComfyUI process.
+All unit tests inject mock HTTP and WebSocket clients via the constructor — no real network, no GPU, no ComfyUI process. Mocked clients use Node.js built-in fetch and WebSocket interfaces (Node ≥ 22).
 
 | # | Test description | Pass condition |
 |---|-----------------|----------------|
@@ -592,14 +592,14 @@ All unit tests inject mock HTTP and WebSocket clients via the constructor — no
 | 17 | `cancelJob` — QUEUED job | removed from queue; no ComfyUI call; status `CANCELLED`; returns `true` |
 | 18 | `cancelJob` — RUNNING job | `/queue` delete issued; WS `execution_interrupted` → status `CANCELLED`; returns `true` |
 | 19 | `cancelJob` — COMPLETED job | no-op; returns `false` |
-| 20 | `getJobArtifact` — COMPLETED job | streams bytes; mimeType `image/png` or `video/mp4` |
+| 20 | `getJobArtifact` — COMPLETED job | streams bytes; mimeType `image/png` or `image/webp` |
 | 21 | `getJobArtifact` — FAILED job | throws `JobNotCompleteError` |
 | 22 | `getJobArtifact` — past TTL | throws `ArtifactExpiredError` |
-| 23 | Template compile — image tokens substituted | compiled JSON matches expected snapshot |
-| 24 | Template compile — video tokens substituted | compiled JSON matches expected snapshot |
+| 23 | Template compile — image tokens substituted | compiled JSON matches snapshot: `CheckpointLoaderSimple` on `flux1-schnell-fp8.safetensors`; node 5 is `KSampler` with `cfg=1.0`, `sampler_name=euler`, `scheduler=simple`; node 7 is `SaveImage` |
+| 24 | Template compile — video tokens substituted | compiled JSON matches snapshot: node 1 `UNETLoader` → node 2 `ModelSamplingSD3 shift=8.0` → node 3 `CLIPLoader type=wan` → nodes 5/6 `CLIPTextEncode` → node 7 `EmptyHunyuanLatentVideo 832×480` → node 8 `KSampler cfg=6.0 uni_pc` → node 9 `VAEDecode` → node 10 output node |
 | 25 | Template compile — unknown model ID rejected | throws `ValidationError` |
 | 26 | Sweep — deletes artifact file past TTL | file removed; `outputFile` cleared |
-| 27 | Sweep — evicts oldest records past cap | record evicted; newer records retained |
+| 27 | Sweep — evicts oldest artifacts when byte cap exceeded | oldest artifact by `completedAt` deleted first; total bytes drop below `COMFY_ARTIFACT_MAX_BYTES` |
 
 ### 5.2 Integration Test (requires live ComfyUI)
 
@@ -614,30 +614,22 @@ if (!process.env.COMFYUI_URL) {
 }
 ```
 
-Run locally with the SSH tunnel active:
+Run locally with the tunnel active (or on-host against loopback):
 ```bash
-COMFYUI_URL=http://127.0.0.1:8188 npx tsx scripts/test-comfyui-integration.ts
+COMFYUI_URL=http://127.0.0.1:8188 COMFY_DATA_DIR=/var/lib/comfy-test \
+  npx tsx scripts/test-comfyui-integration.ts
 ```
 
 **Scenarios:**
 
 | # | Scenario | What it verifies |
 |---|----------|-----------------|
-| 1 | Connectivity check | `GET /queue` returns HTTP 200 |
+| 1 | Connectivity check | `GET /queue` returns HTTP 200; `GET /object_info` reveals available output nodes; video output path (SaveVideo vs SaveAnimatedWEBP) confirmed |
 | 2 | Image job round-trip | Submit 512×512 Flux-schnell, 4 steps, fixed seed; poll until `COMPLETED` or timeout; `getJobArtifact` yields > 0 bytes, MIME `image/png` |
 | 3 | Cancel running job | Submit image job; immediately `cancelJob`; status eventually `CANCELLED` |
 | 4 | Per-user limit | Submit two image jobs for the same userId in rapid succession; second rejected with `UserJobLimitError` |
 
-The integration test writes no files outside `COMFY_ARTIFACT_DIR`, requires no `sudo` or elevated permissions, and does not modify any model files or ComfyUI configuration.
-
----
-
-## Open Questions for Klaus
-
-1. **Wan 2.1 ComfyUI nodes:** Are the `WanVideoModelLoader`, `WanVideoT5TextEncoder`, `WanVideoVAE`, `WanVideoTextEncode`, `WanVideoEmptyEmbeds`, `WanVideoSampler`, `WanVideoDecoder` custom nodes already installed in the v0.36.0 container? If not, which custom node package provides them?
-2. **VHS_VideoCombine:** Is `comfyanonymous/ComfyUI-VideoHelperSuite` (the VHS pack) installed and accessible for mp4 output? Fallback: save individual frames and zip them.
-3. **Model store paths:** The design assumes `image/checkpoints/`, `image/clip/`, `image/vae/`, `video/diffusion_models/`, `video/text_encoders/`, `video/vae/` under `/srv/projects/coderxp/models`. Confirm these map to ComfyUI's `model_paths` config.
-4. **SSH tunnel lifecycle:** Who owns the tunnel process? Should the provider start it on init, or is it a separate service-level concern managed by the host setup?
+The integration test writes no files outside `COMFY_DATA_DIR`, requires no `sudo` or elevated permissions, and does not modify any model files or ComfyUI configuration.
 
 ---
 
@@ -646,10 +638,10 @@ The integration test writes no files outside `COMFY_ARTIFACT_DIR`, requires no `
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `COMFYUI_URL` | — | Base URL of ComfyUI (e.g. `http://127.0.0.1:8188`). Required at runtime; absence skips integration tests. |
+| `COMFY_DATA_DIR` | **none — required** | Root data directory for artifact cache (`artifacts/`) and job store (`jobs.jsonl`). Provider **fails at startup** if unset or directory not writable. No `/tmp` paths are used. |
 | `COMFY_IMAGE_TIMEOUT_S` | `120` | Wall-clock timeout for image jobs (seconds) |
 | `COMFY_VIDEO_TIMEOUT_S` | `600` | Wall-clock timeout for video jobs (seconds) |
-| `COMFY_ARTIFACT_DIR` | `/tmp/comfy-artifacts` | Local artifact cache directory |
 | `COMFY_ARTIFACT_TTL_HOURS` | `24` | Artifact retention window |
+| `COMFY_ARTIFACT_MAX_BYTES` | `21474836480` (20 GB) | Maximum total bytes of stored artifacts; oldest-first eviction when exceeded |
 | `COMFY_MAX_JOB_RECORDS` | `1000` | Maximum job records before LRU eviction |
 | `COMFY_SWEEP_INTERVAL_MINUTES` | `15` | Background sweep cadence |
-| `COMFY_JOB_STORE_PATH` | `/tmp/comfy-jobs.json` | Crash-recovery job store path |
