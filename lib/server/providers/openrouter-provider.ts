@@ -77,6 +77,19 @@ export class OpenRouterProvider implements ITextModelProvider {
     return getAllowlistDescriptors();
   }
 
+  private buildHeaders(apiKey: string): Record<string, string> {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+      "X-Title": "CoderXP",
+    };
+    const referer = process.env.APP_PUBLIC_URL?.trim();
+    if (referer) {
+      headers["HTTP-Referer"] = referer;
+    }
+    return headers;
+  }
+
   async generateText(req: TextGenerationRequest, signal?: AbortSignal): Promise<string> {
     this.validateRequest(req);
     const apiKey = this.getApiKey();
@@ -91,12 +104,7 @@ export class OpenRouterProvider implements ITextModelProvider {
 
     const res = await this.fetchFn(`${this.baseUrl}/chat/completions`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        "HTTP-Referer": "https://coderxp.pro",
-        "X-Title": "CoderXP",
-      },
+      headers: this.buildHeaders(apiKey),
       body: JSON.stringify(payload),
       signal,
     });
@@ -145,12 +153,7 @@ export class OpenRouterProvider implements ITextModelProvider {
 
     const res = await this.fetchFn(`${this.baseUrl}/chat/completions`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        "HTTP-Referer": "https://coderxp.pro",
-        "X-Title": "CoderXP",
-      },
+      headers: this.buildHeaders(apiKey),
       body: JSON.stringify(payload),
       signal,
     });

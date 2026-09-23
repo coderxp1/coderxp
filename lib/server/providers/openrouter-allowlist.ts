@@ -21,39 +21,39 @@ export interface AllowlistEntry {
 }
 
 export const OPENROUTER_ALLOWLIST_METADATA = {
-  version: "2026-09-17",
-  reviewedBy: "Coderxp Review",
-  lastVerified: "2026-09-17T00:00:00Z",
+  version: "2026-09-23",
+  reviewedBy: "Jan-Paul Hartmann",
+  lastVerified: "2026-09-23T03:52:29Z",
 } as const;
 
 export const OPENROUTER_REVIEWED_MODELS: readonly AllowlistEntry[] = [
   {
-    id: "meta-llama/llama-3.3-70b-instruct:free",
-    name: "Llama 3.3 70B Instruct (Free)",
-    contextTokens: 131072,
+    id: "qwen/qwen3.8-27b:free",
+    name: "Qwen: Qwen3.8 27B (free)",
+    contextTokens: 262144,
     pricingSnapshot: { prompt: 0, completion: 0 },
-    verifiedAt: "2026-09-17T00:00:00Z",
+    verifiedAt: "2026-09-23T03:52:29Z",
   },
   {
-    id: "qwen/qwen-2.5-coder-32b-instruct:free",
-    name: "Qwen 2.5 Coder 32B Instruct (Free)",
-    contextTokens: 32768,
+    id: "google/gemma-4-31b-it:free",
+    name: "Google: Gemma 4 31B (free)",
+    contextTokens: 262144,
     pricingSnapshot: { prompt: 0, completion: 0 },
-    verifiedAt: "2026-09-17T00:00:00Z",
+    verifiedAt: "2026-09-23T03:52:29Z",
   },
   {
-    id: "google/gemini-2.0-flash-exp:free",
-    name: "Gemini 2.0 Flash Experimental (Free)",
-    contextTokens: 1048576,
+    id: "google/gemma-4-26b-a4b-it:free",
+    name: "Google: Gemma 4 26B A4B (free)",
+    contextTokens: 262144,
     pricingSnapshot: { prompt: 0, completion: 0 },
-    verifiedAt: "2026-09-17T00:00:00Z",
+    verifiedAt: "2026-09-23T03:52:29Z",
   },
   {
-    id: "deepseek/deepseek-r1:free",
-    name: "DeepSeek R1 (Free)",
-    contextTokens: 65536,
+    id: "nvidia/nemotron-3.5-lightning:free",
+    name: "NVIDIA: Nemotron 3.5 Lightning (free)",
+    contextTokens: 1000000,
     pricingSnapshot: { prompt: 0, completion: 0 },
-    verifiedAt: "2026-09-17T00:00:00Z",
+    verifiedAt: "2026-09-23T03:52:29Z",
   },
 ] as const;
 

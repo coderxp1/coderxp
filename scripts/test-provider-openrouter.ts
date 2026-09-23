@@ -26,7 +26,7 @@ async function main() {
   await assert.rejects(
     () =>
       gatedProvider.generateText({
-        modelId: "meta-llama/llama-3.3-70b-instruct:free",
+        modelId: "qwen/qwen3.8-27b:free",
         messages: [{ role: "user", content: "hello" }],
       }),
     ExternalProvidersDisabledError,
@@ -49,7 +49,7 @@ async function main() {
   await assert.rejects(
     () =>
       unconfiguredProvider.generateText({
-        modelId: "meta-llama/llama-3.3-70b-instruct:free",
+        modelId: "qwen/qwen3.8-27b:free",
         messages: [{ role: "user", content: "hello" }],
       }),
     /OPENROUTER_API_KEY is not configured/,
@@ -107,7 +107,7 @@ async function main() {
   await assert.rejects(
     () =>
       unavailableProvider.generateText({
-        modelId: "meta-llama/llama-3.3-70b-instruct:free",
+        modelId: "qwen/qwen3.8-27b:free",
         messages: [{ role: "user", content: "write code" }],
       }),
     ModelUnavailableError,
@@ -133,7 +133,7 @@ async function main() {
   let caughtRateLimit: ProviderRateLimitError | null = null;
   try {
     await rateLimitedProvider.generateText({
-      modelId: "meta-llama/llama-3.3-70b-instruct:free",
+      modelId: "qwen/qwen3.8-27b:free",
       messages: [{ role: "user", content: "hello" }],
     });
   } catch (err) {
@@ -170,17 +170,27 @@ async function main() {
     }) as any,
   });
 
+  delete process.env.APP_PUBLIC_URL;
   const resultText = await successProvider.generateText({
-    modelId: "meta-llama/llama-3.3-70b-instruct:free",
+    modelId: "qwen/qwen3.8-27b:free",
     messages: [{ role: "user", content: "Write a hello world program in JS" }],
   });
 
   assert.equal(resultText, "console.log('hello world');");
   assert.equal(capturedHeaders?.get("Authorization"), "Bearer sk-or-test-mock-key-12345");
-  assert.equal(capturedHeaders?.get("HTTP-Referer"), "https://coderxp.pro");
+  assert.equal(capturedHeaders?.get("HTTP-Referer"), null, "HTTP-Referer must be omitted when APP_PUBLIC_URL is not set");
   assert.equal(capturedHeaders?.get("X-Title"), "CoderXP");
   const parsedReq = JSON.parse(capturedBody || "{}");
   assert.equal(parsedReq.stream, false);
+
+  // Also test with APP_PUBLIC_URL set
+  process.env.APP_PUBLIC_URL = "https://preview.coderxp.example";
+  await successProvider.generateText({
+    modelId: "qwen/qwen3.8-27b:free",
+    messages: [{ role: "user", content: "test referer" }],
+  });
+  assert.equal(capturedHeaders?.get("HTTP-Referer"), "https://preview.coderxp.example");
+  delete process.env.APP_PUBLIC_URL;
   console.log("[PASS] Non-streaming text generation verified.");
 
   // -------------------------------------------------------------
@@ -219,7 +229,7 @@ async function main() {
   let finalFinishReason: string | undefined;
 
   for await (const chunk of streamProvider.streamText({
-    modelId: "meta-llama/llama-3.3-70b-instruct:free",
+    modelId: "qwen/qwen3.8-27b:free",
     messages: [{ role: "user", content: "write add function" }],
   })) {
     if (chunk.delta) deltas.push(chunk.delta);
