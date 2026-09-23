@@ -1,19 +1,45 @@
 /**
- * Devbox WSS Single-Use Token Minter & Validator for CoderXP Revision 2.4.
+ * Devbox WSS Single-Use Token Minter & Validator for CoderXP.
  *
- * Implements Amendment 1:
+ * Hardened:
+ * - Requires explicit DEVBOX_TOKEN_SECRET (no hardcoded fallback).
+ * - Does not reuse AUTH_SESSION_SECRET.
  * - Issues short-lived (60s), HMAC-SHA256 signed single-use session tokens.
- * - Enforces user session, project ownership, and tier entitlement.
- * - Invalidates token on first use; rejects expired, invalid, or cross-user handshakes.
+ * - Invalidates token on first use; rejects expired, invalid, or cross-project handshakes.
  */
 
 import crypto from "node:crypto";
 
-const DEVBOX_TOKEN_SECRET =
-  process.env.DEVBOX_TOKEN_SECRET || "coderxp-devbox-broker-hmac-secret-2026";
-const TOKEN_TTL_MS = 60 * 1000; // 60 seconds
+const MIN_SECRET_LENGTH = 32;
+const TOKEN_TTL_MS = 60 * 1000;
 
-// In-memory set of consumed nonces (prevents replay attacks)
+function resolveDevboxTokenSecret(): string {
+  const secret = (process.env.DEVBOX_TOKEN_SECRET || "").trim();
+  if (!secret) {
+    throw new Error(
+      "DEVBOX_TOKEN_SECRET is required and must be set to a strong random value (min 32 characters). No default secret is allowed.",
+    );
+  }
+  if (secret.length < MIN_SECRET_LENGTH) {
+    throw new Error(
+      `DEVBOX_TOKEN_SECRET must be at least ${MIN_SECRET_LENGTH} characters. No default secret is allowed.`,
+    );
+  }
+  return secret;
+}
+
+let _devboxSecret: string | null = null;
+function getDevboxTokenSecret(): string {
+  if (_devboxSecret === null) {
+    _devboxSecret = resolveDevboxTokenSecret();
+  }
+  return _devboxSecret;
+}
+
+export function __resetDevboxTokenSecretCacheForTests(): void {
+  _devboxSecret = null;
+}
+
 const consumedNonces = new Set<string>();
 
 export interface DevboxTokenPayload {
@@ -24,6 +50,7 @@ export interface DevboxTokenPayload {
 }
 
 export function mintDevboxWssToken(userId: string, projectId: string): string {
+  const secret = getDevboxTokenSecret();
   const payload: DevboxTokenPayload = {
     userId,
     projectId,
@@ -33,7 +60,7 @@ export function mintDevboxWssToken(userId: string, projectId: string): string {
 
   const payloadB64 = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const signature = crypto
-    .createHmac("sha256", DEVBOX_TOKEN_SECRET)
+    .createHmac("sha256", secret)
     .update(payloadB64)
     .digest("base64url");
 
@@ -48,6 +75,16 @@ export function verifyDevboxWssToken(
     return { valid: false, error: "Missing token." };
   }
 
+  let secret: string;
+  try {
+    secret = getDevboxTokenSecret();
+  } catch (err: unknown) {
+    return {
+      valid: false,
+      error: err instanceof Error ? err.message : "Devbox token secret not configured.",
+    };
+  }
+
   const parts = token.split(".");
   if (parts.length !== 2) {
     return { valid: false, error: "Malformed token format." };
@@ -55,11 +92,16 @@ export function verifyDevboxWssToken(
 
   const [payloadB64, signature] = parts;
   const expectedSig = crypto
-    .createHmac("sha256", DEVBOX_TOKEN_SECRET)
+    .createHmac("sha256", secret)
     .update(payloadB64)
     .digest("base64url");
 
-  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expectedSig))) {
+  const sigBuf = Buffer.from(signature);
+  const expectedBuf = Buffer.from(expectedSig);
+  if (
+    sigBuf.length !== expectedBuf.length ||
+    !crypto.timingSafeEqual(sigBuf, expectedBuf)
+  ) {
     return { valid: false, error: "Invalid token signature." };
   }
 
@@ -75,14 +117,16 @@ export function verifyDevboxWssToken(
   }
 
   if (payload.projectId !== expectedProjectId) {
-    return { valid: false, error: "Token project mismatch (unauthorized cross-project access)." };
+    return {
+      valid: false,
+      error: "Token project mismatch (unauthorized cross-project access).",
+    };
   }
 
   if (consumedNonces.has(payload.nonce)) {
     return { valid: false, error: "Token has already been consumed (replay prevention)." };
   }
 
-  // Mark nonce as consumed
   consumedNonces.add(payload.nonce);
 
   return { valid: true, userId: payload.userId };
