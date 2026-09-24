@@ -15,12 +15,12 @@ async function main() {
   console.log("=== RUNNING OPENROUTER PROVIDER UNIT TESTS ===");
 
   // -------------------------------------------------------------
-  // 1. Gating: Fails closed when ALLOW_EXTERNAL_TEXT_PROVIDERS is false
+  // 1. Gating: Fails closed when ALLOW_EXTERNAL_TEXT_PROVIDERS is false or unset
   // -------------------------------------------------------------
   console.log("--- 1. Testing data policy gate (ALLOW_EXTERNAL_TEXT_PROVIDERS) ---");
+  delete process.env.ALLOW_EXTERNAL_TEXT_PROVIDERS;
   const gatedProvider = new OpenRouterProvider({
     apiKey: "sk-or-test-mock-key-12345",
-    allowExternalProviders: false,
   });
 
   await assert.rejects(
@@ -30,12 +30,29 @@ async function main() {
         messages: [{ role: "user", content: "hello" }],
       }),
     ExternalProvidersDisabledError,
-    "Must throw ExternalProvidersDisabledError when gate is false",
+    "Must throw ExternalProvidersDisabledError when gate is unset",
   );
 
-  const emptyModels = await gatedProvider.listModels();
-  assert.equal(emptyModels.length, 0, "listModels must return empty array when gate is false");
+  let emptyModels = await gatedProvider.listModels();
+  assert.equal(emptyModels.length, 0, "listModels must return empty array when gate is unset");
+
+  // Also test explicitly set to "false"
+  process.env.ALLOW_EXTERNAL_TEXT_PROVIDERS = "false";
+  await assert.rejects(
+    () =>
+      gatedProvider.generateText({
+        modelId: "qwen/qwen3.8-27b:free",
+        messages: [{ role: "user", content: "hello" }],
+      }),
+    ExternalProvidersDisabledError,
+    "Must throw ExternalProvidersDisabledError when gate is 'false'",
+  );
+  emptyModels = await gatedProvider.listModels();
+  assert.equal(emptyModels.length, 0, "listModels must return empty array when gate is 'false'");
   console.log("[PASS] Data policy gate strictly fails closed.");
+
+  // For remaining tests, enable external providers via env
+  process.env.ALLOW_EXTERNAL_TEXT_PROVIDERS = "true";
 
   // -------------------------------------------------------------
   // 2. Secret Gating: Fails closed when OPENROUTER_API_KEY is missing
@@ -43,7 +60,6 @@ async function main() {
   console.log("--- 2. Testing missing API key fails closed ---");
   const unconfiguredProvider = new OpenRouterProvider({
     apiKey: "",
-    allowExternalProviders: true,
   });
 
   await assert.rejects(
@@ -63,7 +79,6 @@ async function main() {
   console.log("--- 3. Testing explicit allowlist enforcement ---");
   const provider = new OpenRouterProvider({
     apiKey: "sk-or-test-mock-key-12345",
-    allowExternalProviders: true,
   });
 
   // Test paid/unlisted model
@@ -95,7 +110,6 @@ async function main() {
   console.log("--- 4. Testing no silent fallback on model unavailability ---");
   const unavailableProvider = new OpenRouterProvider({
     apiKey: "sk-or-test-mock-key-12345",
-    allowExternalProviders: true,
     fetchFn: (async () => {
       return new Response("Model currently offline", {
         status: 503,
@@ -121,7 +135,6 @@ async function main() {
   console.log("--- 5. Testing rate limit handling (HTTP 429) ---");
   const rateLimitedProvider = new OpenRouterProvider({
     apiKey: "sk-or-test-mock-key-12345",
-    allowExternalProviders: true,
     fetchFn: (async () => {
       return new Response("Too many requests", {
         status: 429,
@@ -155,7 +168,6 @@ async function main() {
 
   const successProvider = new OpenRouterProvider({
     apiKey: "sk-or-test-mock-key-12345",
-    allowExternalProviders: true,
     fetchFn: (async (_url, init) => {
       capturedHeaders = new Headers(init?.headers);
       capturedBody = init?.body as string;
@@ -207,7 +219,6 @@ async function main() {
 
   const streamProvider = new OpenRouterProvider({
     apiKey: "sk-or-test-mock-key-12345",
-    allowExternalProviders: true,
     fetchFn: (async () => {
       const stream = new ReadableStream({
         start(controller) {
@@ -242,6 +253,7 @@ async function main() {
   assert.deepEqual(finalUsage, { promptTokens: 10, completionTokens: 15 });
   console.log("[PASS] Streaming text generation verified.");
 
+  delete process.env.ALLOW_EXTERNAL_TEXT_PROVIDERS;
   console.log("=== ALL OPENROUTER PROVIDER TESTS PASSED ===");
 }
 

@@ -27,7 +27,6 @@ import {
 export interface OpenRouterOptions {
   readonly apiKey?: string;
   readonly baseUrl?: string;
-  readonly allowExternalProviders?: boolean;
   readonly fetchFn?: typeof fetch;
 }
 
@@ -35,19 +34,14 @@ export class OpenRouterProvider implements ITextModelProvider {
   private readonly baseUrl: string;
   private readonly fetchFn: typeof fetch;
   private readonly customApiKey?: string;
-  private readonly customAllowExternal?: boolean;
 
   constructor(options: OpenRouterOptions = {}) {
     this.baseUrl = options.baseUrl || "https://openrouter.ai/api/v1";
     this.fetchFn = options.fetchFn || fetch;
     this.customApiKey = options.apiKey;
-    this.customAllowExternal = options.allowExternalProviders;
   }
 
   private isExternalAllowed(): boolean {
-    if (this.customAllowExternal !== undefined) {
-      return this.customAllowExternal;
-    }
     return process.env.ALLOW_EXTERNAL_TEXT_PROVIDERS === "true";
   }
 
