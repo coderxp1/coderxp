@@ -193,7 +193,7 @@ The provider maintains **two fixed, server-side workflow graphs** stored under `
 | Parameter        | Type    | Image | Video | Constraints                                     |
 |------------------|---------|:-----:|:-----:|-------------------------------------------------|
 | `prompt`         | string  | ✓     | ✓     | Required. max 1 000 chars.                      |
-| `negativePrompt` | string  | ✓     | ✓     | Optional. max 1 000 chars.                      |
+| `negativePrompt` | string  | —     | ✓     | Optional for video (max 1 000 chars). For image domain, supplying non-empty `negativePrompt` throws `ValidationError` (Flux1-schnell does not support negative prompts). |
 | `width`          | integer | ✓     | ✓     | Image: 64–1024, divisible by 8 (required by `MediaGenerationRequest`). Video: must be exactly 832 (fail closed with `ValidationError` otherwise). |
 | `height`         | integer | ✓     | ✓     | Image: 64–1024, divisible by 8 (required by `MediaGenerationRequest`). Video: must be exactly 480 (fail closed with `ValidationError` otherwise). |
 | `seed`           | uint32  | ✓     | ✓     | [0, 4 294 967 295]. Default: random.            |
@@ -204,6 +204,7 @@ The provider maintains **two fixed, server-side workflow graphs** stored under `
 **Fail-closed parameter validation rules:**
 - Any parameter outside this list, or any value outside the stated range or step constraint, is a `ValidationError`. The job is rejected before any GPU resources are touched.
 - **Fail closed on ignored fields (House Rule):** User inputs are never silently ignored.
+  - **Negative prompt on image jobs:** Flux-schnell is a flow-matching distilled model that does not have a negative conditioning path. Supplying a non-empty `negativePrompt` on an image domain request is rejected immediately with `ValidationError("Flux1-schnell image model does not accept negative prompts")`.
   - **Video dimensions:** For video requests, if `width` is supplied and `width !== 832`, or `height` is supplied and `height !== 480`, the provider rejects the request with `ValidationError("Wan 2.1 1.3B video model requires width=832 and height=480")`. Dimensions other than 832×480 are never silently ignored or coerced.
   - **Image dimensions:** For image requests, `width` and `height` are strictly required fields on `MediaGenerationRequest` (`types.ts:41-42`); the provider does not provide default dimensions. Any defaulting (e.g. 512×512) must be performed upstream at the API/route layer before invoking `submitJob`.
 - **Temporal frame grouping (`durationFrames`):** `EmptyHunyuanLatentVideo` works in latent frame groups of 4. Supplying a frame count that does not satisfy `(durationFrames - 1) % 4 === 0` causes the underlying node to silently floor the frame count, resulting in fewer generated frames than the user requested. To prevent silent truncation, the provider strictly validates that `durationFrames` is of the form $4n+1$; any non-compliant integer (e.g. 50, 82) throws `ValidationError`.
@@ -289,7 +290,7 @@ Uses `CheckpointLoaderSimple` to load the all-in-one `flux1-schnell-fp8.safetens
 | `__STEPS__`   | `req.steps`   | 4 |
 | `__SEED__`    | `req.seed`    | `Math.floor(Math.random() * 4294967295)` |
 
-Node 3 is a fixed empty-string negative conditioning. The `negativePrompt` field is accepted by the API for forward-compatibility but silently ignored in the image template — Flux-schnell is a flow-matching distilled model without a conventional negative conditioning path.
+Node 3 is fixed empty-string negative conditioning. Flux-schnell is a flow-matching distilled model without a negative conditioning path; supplying a non-empty `negativePrompt` on an image request fails closed with `ValidationError`.
 
 ---
 
@@ -689,6 +690,7 @@ COMFYUI_URL=http://127.0.0.1:8188 COMFY_DATA_DIR=/var/lib/comfy-test \
 | 2 | Image job round-trip | Submit 512×512 Flux-schnell, 4 steps, fixed seed; poll until `COMPLETED` or timeout; `getJobArtifact` yields > 0 bytes, MIME `image/png` |
 | 3 | Cancel running job | Submit image job; immediately `cancelJob`; status eventually `CANCELLED` |
 | 4 | Per-user limit | Submit two image jobs for the same userId in rapid succession; second rejected with `UserJobLimitError` |
+| 5 | Video job round-trip (MP4) | Submit 832×480 Wan 2.1 t2v, `durationFrames: 17` (form $4n+1$), `steps: 10`, through `CreateVideo` + `SaveVideo`; poll until `COMPLETED`; `getJobArtifact` yields > 0 bytes, output filename ending in `.mp4`, MIME `video/mp4` |
 
 The integration test writes no files outside `COMFY_DATA_DIR`, requires no `sudo` or elevated permissions, and does not modify any model files or ComfyUI configuration.
 
