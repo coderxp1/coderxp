@@ -206,20 +206,20 @@ graph TD
 
 ---
 
-## 9. Pinned Per-Stack Base Images
+## 9. Base Images & Build-Time Digest Pinning Policy
 
-CoderXP disallows dynamic `latest` tags. Base images use real upstream base distributions pinned by full cryptographic SHA256 digest at build time, with digests recorded in the repository. Node.js images strictly use Node 22 (the project runtime baseline):
+CoderXP disallows dynamic `latest` tags. Base images target upstream official distributions, and the repository enforces full cryptographic SHA256 digest pinning as a strict build-time policy: during image builds in CI, the exact immutable image digest is resolved from the upstream registry and recorded directly into the repository configuration. Devbox runtimes execute exclusively against these recorded digests. Node.js images strictly use Node 22 (the project runtime baseline):
 
-* **Node.js Stack (Node >= 22):** `node:22-bookworm-slim@sha256:<full-64-char-digest>`
+* **Node.js Stack (Node >= 22):** `node:22-bookworm-slim`
   - Includes Node.js 22 LTS, pnpm, yarn, npm, Git, curl, jq.
-* **Python Stack:** `python:3.11-slim-bookworm@sha256:<full-64-char-digest>`
+* **Python Stack:** `python:3.11-slim-bookworm`
   - Includes Python 3.11, pip, uv, virtualenv, build-essential.
-* **Go Stack:** `golang:1.23-bookworm@sha256:<full-64-char-digest>`
+* **Go Stack:** `golang:1.23-bookworm`
   - Includes Go 1.23, git, gcc, libc6-dev.
-* **Rust Stack:** `rust:1.82-slim-bookworm@sha256:<full-64-char-digest>`
+* **Rust Stack:** `rust:1.82-slim-bookworm`
   - Includes Rust 1.82, cargo, rustc, mold linker.
 
-Digests are resolved and pinned during the CI image build pipeline and audited weekly with automated CVE scanners.
+Digests are resolved and pinned during the CI image build pipeline and audited weekly with automated CVE scanners (Trivy/Grype). Base images never contain unneeded host-level build utilities or setuid binaries.
 
 ---
 

@@ -126,25 +126,41 @@ window.tools.push({
 
 ### 3.3 One-Round Clarifying Questions
 
-* **Source File:** `src/tools/chat_ui/clarify.js` (lines 3–9, 383–410)
+* **Source File:** `src/tools/chat_ui/clarify.js` (lines 3–13, 384–410)
 * **Code Excerpt:**
 ```javascript
-// src/tools/chat_ui/clarify.js:3-9, 406-410
+// src/tools/chat_ui/clarify.js:3-13 (Opening Comment)
 // When the user's request is too vague to build confidently, the model can call
 // AskClarifyingQuestions with up to TWO short questions, each with a few concrete
 // options. We render an interactive card in the chat, BLOCK the agentic loop
 // inside exec() until the user answers...
-exec: async function (args, context) {
-    ...
-    // Block here until the user resolves the card. The result is returned
-    // as the tool_result, so the agentic loop continues and the model
-    // builds with these answers in the same turn.
-    return await runClarification(questions, context || {});
-}
+// Design notes:
+// - At most 2 questions per round (enforced here even if the model sends more)...
+
+// src/tools/chat_ui/clarify.js:384-396, 406-410 (Executable Implementation)
+// Defensive normalization — the schema can't hard-cap array sizes, and
+// we must never overwhelm the user. Keep at most 3 questions (matching
+// the system-prompt limit), each with at most 4 options, dropping
+// anything malformed.
+let questions = Array.isArray(args && args.questions) ? args.questions : [];
+questions = questions
+    .filter(q => q && typeof q.question === 'string' && q.question.trim() && Array.isArray(q.options))
+    .slice(0, 3)
+    .map(q => ({
+        question: q.question.trim(),
+        options: q.options.filter(o => typeof o === 'string' && o.trim()).map(o => o.trim()).slice(0, 4),
+    }))
+    .filter(q => q.options.length > 0);
+...
+// Block here until the user resolves the card. The result is returned
+// as the tool_result, so the agentic loop continues and the model
+// builds with these answers in the same turn.
+return await runClarification(questions, context || {});
 ```
+* **Source Discrepancy Note:** There is an explicit discrepancy within `src/tools/chat_ui/clarify.js` between the opening architectural comments and the executable code: the comment header states *"up to TWO short questions"* and *"At most 2 questions per round (enforced here even if the model sends more)"* (lines 4, 12). In contrast, the actual executable normalization logic at lines 386–395 explicitly normalizes using `.slice(0, 3)` with up to 4 options each, noting in inline comments that it keeps *"at most 3 questions (matching the system-prompt limit)"*. The executable behavior permits up to 3 questions.
 * **Analysis & Verdict:** **ADOPT**
-  - When a prompt is ambiguous, `AskClarifyingQuestions` renders an interactive multi-choice card and suspends the agent loop via `runClarification` Promise resolution until the user selects options or clicks skip.
-  - *CoderXP Adoption:* Adopt the single-round clarifying question pattern to reduce token waste and prevent incorrect architectural assumptions during initial workspace scaffolding.
+  - When a user prompt is underspecified, `AskClarifyingQuestions` renders an interactive multi-choice card and suspends the agent loop via `runClarification` Promise resolution until the user selects options, types custom responses, or clicks skip.
+  - *CoderXP Adoption:* Adopt the single-round clarifying question pattern to reduce token waste and prevent incorrect architectural assumptions during initial workspace scaffolding. Bound questions strictly to 1–3 targeted options.
 
 ---
 
