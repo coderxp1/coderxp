@@ -6,7 +6,7 @@
 **Department:** GPU/Media stream  
 **Accountable:** Klaus Hoffmann  
 **Date:** 2026-09-24  
-**Implements:** `IMediaJobService` from `lib/server/providers/types.ts` (`IMediaJobService:70-75`, `MediaGenerationRequest:37-47`, `JobRecord:51-62`, `JobStatus:49`, merged in PR #4)  
+**Implements:** `IMediaJobService` from `lib/server/providers/types.ts` (`IMediaJobService:70-75`, `MediaGenerationRequest:37-47`, `JobRecord:51-62`, `JobStatus:49`, introduced in PR #4 (head 52cf941), pending merge)  
 **Supersedes:** PR #5 (`feat/media-provider-design`)
 
 ---
@@ -15,7 +15,9 @@
 
 This document specifies the design for `ComfyUiMediaJobService`, the concrete implementation of `IMediaJobService` that drives image and video generation through the local ComfyUI v0.36.0 instance on the GPU host. The text-provider layer (PR #4) is not touched here — this service builds alongside it, implementing the same provider-layer interfaces for the `media` domain.
 
-**What this is NOT:** implementation code. This PR contains only the design document. The implementation PR follows after design review.
+**Baseline status:** The interfaces `IMediaJobService` (`lib/server/providers/types.ts:70-75`), `MediaGenerationRequest` (`lib/server/providers/types.ts:37-47`), and `JobRecord` (`lib/server/providers/types.ts:51-62`) were introduced in PR #4 (head 52cf941), pending merge into `main`. The implementation PR must not be opened until PR #4 has been merged into `main`.
+
+**What this is NOT:** implementation code. This PR contains only the design document. The implementation PR follows after design review and PR #4 merge.
 
 **Node constraint:** ComfyUI v0.36.0, hardened container, **native nodes only**. No custom nodes will ever be installed (no WanVideoWrapper, no VideoHelperSuite, no ComfyUI-Manager). The workflow templates in §2 use only nodes available in a stock ComfyUI v0.36.0 installation.
 
@@ -77,14 +79,19 @@ Returns execution history for a specific prompt. Empty object `{}` means the pro
     "prompt": [...],
     "outputs": {
       "<output_node_id>": {
-        "images": [{ "filename": "cxp_img_00001_.png", "subfolder": "", "type": "output" }],
-        "gifs":   [{ "filename": "cxp_vid_00001_.webp", "subfolder": "", "type": "output" }]
+        "images": [
+          { "filename": "cxp_img_00001_.png", "subfolder": "", "type": "output" }
+        ]
       }
     },
     "status": { "status_str": "success", "completed": true }
   }
 }
 ```
+
+*Output parsing rule (no hardcoded keys):* Native ComfyUI v0.36.0 nodes (`SaveImage`, `SaveAnimatedWEBP`, and `SaveVideo`) all report their generated output files inside the `outputs` object under array-valued entries (native animated WebP and native MP4 SaveVideo both report under `"images"`, with WebP carrying `"animated": [true]`; custom keys like `"gifs"` are produced by custom nodes such as VideoHelperSuite, which are not installed).  
+To remain resilient and fail-safe, the provider **iterates over all output nodes and all array-valued keys in `outputs`**, filters entries where `"type": "output"`, and captures both `filename` and `subfolder` for retrieval via `GET /view?filename=<filename>&subfolder=<subfolder>&type=output`. No output key name is hardcoded.  
+Furthermore, `mimeType` is **derived directly from the returned file extension** (`.png` → `image/png`, `.webp` → `image/webp`, `.mp4` → `video/mp4`), rather than inferred from the startup node probe.
 
 The provider uses this as a fallback poll when the WebSocket connection drops. Primary completion detection is via WebSocket.
 
@@ -97,10 +104,10 @@ Downloads a generated file by name.
 | Parameter   | Required | Description |
 |-------------|----------|-------------|
 | `filename`  | ✓        | File name from the history outputs |
-| `subfolder` |          | Subdirectory inside type folder (usually empty) |
+| `subfolder` |          | Subdirectory inside type folder (carried from history entry) |
 | `type`      |          | `input` / `temp` / `output` (default: `output`) |
 
-Returns raw bytes with the appropriate `Content-Type` (`image/png` or `image/webp`). The provider always uses `type=output`.
+Returns raw bytes with the appropriate `Content-Type` derived from the artifact's extension (`image/png`, `image/webp`, or `video/mp4`). The provider always uses `type=output` and passes `subfolder` if present.
 
 ---
 
@@ -187,14 +194,19 @@ The provider maintains **two fixed, server-side workflow graphs** stored under `
 |------------------|---------|:-----:|:-----:|-------------------------------------------------|
 | `prompt`         | string  | ✓     | ✓     | Required. max 1 000 chars.                      |
 | `negativePrompt` | string  | ✓     | ✓     | Optional. max 1 000 chars.                      |
-| `width`          | integer | ✓     | —     | 64–1024, divisible by 8. Default 512.           |
-| `height`         | integer | ✓     | —     | 64–1024, divisible by 8. Default 512.           |
+| `width`          | integer | ✓     | ✓     | Image: 64–1024, divisible by 8 (required by `MediaGenerationRequest`). Video: must be exactly 832 (fail closed with `ValidationError` otherwise). |
+| `height`         | integer | ✓     | ✓     | Image: 64–1024, divisible by 8 (required by `MediaGenerationRequest`). Video: must be exactly 480 (fail closed with `ValidationError` otherwise). |
 | `seed`           | uint32  | ✓     | ✓     | [0, 4 294 967 295]. Default: random.            |
 | `steps`          | integer | ✓     | ✓     | Image [1, 30] default 4. Video [1, 50] default 30. |
-| `durationFrames` | integer | —     | ✓     | [1, 81]. Default 49 (~3 s @ 16 fps).            |
-| `fps`            | integer | —     | ✓     | Default 16.                                     |
+| `durationFrames` | integer | —     | ✓     | [1, 81], strictly of the form 4n+1 (1, 5, 9, 13, 17, 21, 25, 29, 33, 37, 41, 45, 49, 53, 57, 61, 65, 69, 73, 77, 81). Default 49 (~3 s @ 16 fps). Any value where `(frames - 1) % 4 !== 0` throws `ValidationError`. |
+| `fps`            | integer | —     | ✓     | [1, 30]. Default 16.                            |
 
-Any parameter outside this list, or any value outside the stated range, is a validation error. The job is rejected before any GPU resources are touched.
+**Fail-closed parameter validation rules:**
+- Any parameter outside this list, or any value outside the stated range or step constraint, is a `ValidationError`. The job is rejected before any GPU resources are touched.
+- **Fail closed on ignored fields (House Rule):** User inputs are never silently ignored.
+  - **Video dimensions:** For video requests, if `width` is supplied and `width !== 832`, or `height` is supplied and `height !== 480`, the provider rejects the request with `ValidationError("Wan 2.1 1.3B video model requires width=832 and height=480")`. Dimensions other than 832×480 are never silently ignored or coerced.
+  - **Image dimensions:** For image requests, `width` and `height` are strictly required fields on `MediaGenerationRequest` (`types.ts:41-42`); the provider does not provide default dimensions. Any defaulting (e.g. 512×512) must be performed upstream at the API/route layer before invoking `submitJob`.
+- **Temporal frame grouping (`durationFrames`):** `EmptyHunyuanLatentVideo` works in latent frame groups of 4. Supplying a frame count that does not satisfy `(durationFrames - 1) % 4 === 0` causes the underlying node to silently floor the frame count, resulting in fewer generated frames than the user requested. To prevent silent truncation, the provider strictly validates that `durationFrames` is of the form $4n+1$; any non-compliant integer (e.g. 50, 82) throws `ValidationError`.
 
 ### 2.3 Template A — Flux1-schnell fp8 (image)
 
@@ -272,8 +284,8 @@ Uses `CheckpointLoaderSimple` to load the all-in-one `flux1-schnell-fp8.safetens
 | Token         | Source field  | Default |
 |---------------|---------------|---------|
 | `__PROMPT__`  | `req.prompt`  | — (required) |
-| `__WIDTH__`   | `req.width`   | 512 |
-| `__HEIGHT__`  | `req.height`  | 512 |
+| `__WIDTH__`   | `req.width`   | — (required in `MediaGenerationRequest`) |
+| `__HEIGHT__`  | `req.height`  | — (required in `MediaGenerationRequest`) |
 | `__STEPS__`   | `req.steps`   | 4 |
 | `__SEED__`    | `req.seed`    | `Math.floor(Math.random() * 4294967295)` |
 
@@ -373,7 +385,8 @@ Uses only native ComfyUI v0.36.0 nodes, following the official Wan 2.1 t2v examp
     "inputs": {
       "video": ["10", 0],
       "filename_prefix": "cxp_vid",
-      "format": "auto"
+      "format": "auto",
+      "codec": "auto"
     }
   }
 }
@@ -398,6 +411,9 @@ At startup, `GET /object_info` is queried on ComfyUI to discover available node 
   ```
   In fallback mode, node 9 connects directly to `SaveAnimatedWEBP` emitting an animated WebP file (`image/webp`). The integration test (§5.2) verifies which path is active.
 
+**Note on `SaveVideo` validation and smoke testing:**  
+While `CreateVideo` and `SaveVideo` are registered native nodes in ComfyUI v0.36.0, `SaveVideo` has not been previously executed on our host (earlier host smoke tests exercised `SaveAnimatedWEBP`). The smoke test script (`scripts/comfyui-smoke.sh`) in the implementation PR must run the real MP4 path through the tunnel, and the implementation PR body must show the resulting `.mp4` filename from `/history`. If `SaveVideo` fails validation upstream in ComfyUI for any reason, the service captures and surfaces the exact `node_errors` payload from ComfyUI rather than silently falling back.
+
 **Required model files** (ComfyUI standard folders, read-only):
 - `diffusion_models/wan2.1_t2v_1.3B_fp16.safetensors`
 - `text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors`
@@ -409,12 +425,12 @@ At startup, `GET /object_info` is queried on ComfyUI to discover available node 
 |------------------------|----------------------|---------|
 | `__PROMPT__`           | `req.prompt`         | — (required) |
 | `__NEGATIVE_PROMPT__`  | `req.negativePrompt` | `""` |
-| `__DURATION_FRAMES__`  | `req.durationFrames` | 49 (~3 s @ 16 fps) |
+| `__DURATION_FRAMES__`  | `req.durationFrames` | 49 (~3 s @ 16 fps, form 4n+1) |
 | `__STEPS__`            | `req.steps`          | 30 |
 | `__SEED__`             | `req.seed`           | random uint32 |
 | `__FPS__`              | `req.fps`            | 16 |
 
-Width and height are **fixed at 832×480** for the 1.3B model in v1 (optimal for the 48 GB VRAM budget at the target frame count). The `width`/`height` fields from `MediaGenerationRequest` are accepted at the API layer but are ignored for video domain requests; this constraint will be revisited when the 14B model is onboarded.
+Width and height are **fixed at 832×480** for the Wan 2.1 1.3B model in v1 (optimal for the VRAM budget at the target frame count). If `req.width` or `req.height` is provided with any value other than 832 and 480 respectively, `submitJob` fails closed and throws a `ValidationError("Wan 2.1 1.3B video model requires width=832 and height=480")`. User dimensions are never silently ignored or coerced.
 
 ---
 
@@ -428,7 +444,7 @@ Width and height are **fixed at 832×480** for the 1.3B model in v1 (optimal for
 - **Cancel propagation.** Cancelling a `QUEUED` job removes it from the internal queue without touching ComfyUI. Cancelling a `RUNNING` job sends `POST /queue { "delete": [prompt_id] }`.
 - **Polling-friendly status.** All status is readable via `getJobStatus` with no WebSocket requirement on the client side.
 
-### 3.2 Data Model
+### 3.2 Data Model & Durability
 
 ```typescript
 // Internal (extends the public JobRecord)
@@ -445,11 +461,30 @@ State is held in an in-process `Map<jobId, InternalJobRecord>`. On every state t
 { "ts": 1716000000000, "jobId": "...", "status": "RUNNING", "comfyPromptId": "...", "startedAt": 1716000000000 }
 ```
 
-On startup, the provider reads the JSONL file line by line, applying each event to reconstruct the in-process map. A partially written last line (from a crash mid-write) is detected by failed JSON.parse and discarded — the previous complete line's state is used. This guarantees that a crash mid-write cannot corrupt job history.
-
 `COMFY_DATA_DIR` has **no default**. The provider fails at startup if this variable is unset or if the directory is not writable. No `/tmp` paths are used anywhere in this service.
 
-A restart during `RUNNING` marks that job as `FAILED` on recovery, since the ComfyUI WebSocket connection is lost.
+#### Startup Replay and Restart Recovery
+On startup, the provider reads `$COMFY_DATA_DIR/jobs.jsonl` line by line, applying each event sequentially to reconstruct the in-process map. A partially written last line (from a host or process crash mid-write) is detected by failed `JSON.parse` and discarded — the previous complete line's state is preserved, ensuring crash durability.
+
+**Orphaned job cleanup (Restart Recovery):**  
+If a replayed record remains in `RUNNING` status from a previous process termination:
+1. If `record.comfyPromptId` is known, the provider immediately sends:
+   ```json
+   POST /queue { "delete": [record.comfyPromptId] }
+   ```
+   to ComfyUI before updating status. This cancellation prevents an orphaned prompt from continuing to monopolize the single GPU lane on the host with a job whose client connection is gone.
+2. The record is then transitioned to `FAILED` with `error: "Service restarted while job was running"`, and the state transition is recorded in the map.
+
+#### `jobs.jsonl` File Compaction
+Because the append-only event log would otherwise grow indefinitely over time, the provider implements atomic file compaction:
+1. **Startup compaction:** After completing replay and executing restart recovery cancellations, the provider rewrites the job store atomically:
+   - Writes all surviving records from the in-memory map (one consolidated JSON line per surviving record) to a temporary file:
+     ```
+     $COMFY_DATA_DIR/jobs.jsonl.tmp
+     ```
+   - Calls `fsync` on the file descriptor to ensure durability.
+   - Atomically renames `jobs.jsonl.tmp` over `$COMFY_DATA_DIR/jobs.jsonl`.
+2. **Periodic compaction on retention sweep:** When background sweeps evict terminal records exceeding `COMFY_MAX_JOB_RECORDS` (default 1,000) or purge expired artifacts, compaction is executed via the same atomic write-and-rename mechanism, keeping physical disk usage strictly bounded.
 
 ### 3.3 IMediaJobService: Method Contracts
 
@@ -517,8 +552,8 @@ If `userId !== record.userId`, throw `NotFoundError`.
 
 - Validate `status === "COMPLETED"`. Throw `JobNotCompleteError` otherwise.
 - If local cache file exists at `$COMFY_DATA_DIR/artifacts/<jobId>.<ext>`, return a `ReadStream` from it.
-- Otherwise: `GET /view?filename=<outputFile>&type=output` → pipe the response stream.
-- `mimeType`: `"image/png"` for image domain, `"image/webp"` or `"video/mp4"` for video domain (matches the output node selected at startup).
+- Otherwise: `GET /view?filename=<filename>&subfolder=<subfolder>&type=output` (using the `filename` and `subfolder` recorded from history outputs) → pipe the response stream into local cache file and client.
+- `mimeType`: derived directly from the `outputFile` extension (`.png` → `"image/png"`, `.mp4` → `"video/mp4"`, `.webp` → `"image/webp"`), never hardcoded or coupled to startup probe.
 
 ---
 
@@ -548,11 +583,11 @@ Extension is `png` (image) or `webp`/`mp4` (video, matching the output node). Su
 | Job fails or is cancelled | No artifact written |
 | TTL elapsed | Sweep deletes local file; `outputFile` cleared in map and jobs.jsonl; `getJobArtifact` returns `ArtifactExpiredError` (HTTP 410) |
 | Byte cap exceeded | Oldest artifacts deleted first (oldest-first by `completedAt`) until total bytes under `COMFY_ARTIFACT_MAX_BYTES` (default 20 GB). Checked on every sweep. |
-| Record cap exceeded | Oldest terminal records evicted (LRU by `createdAt`) when count > `COMFY_MAX_JOB_RECORDS` (default 1 000) |
+| Record cap exceeded | Oldest terminal records evicted (LRU by `createdAt`) when count > `COMFY_MAX_JOB_RECORDS` (default 1 000). Atomic file compaction (`jobs.jsonl.tmp` → `jobs.jsonl`) runs immediately to reclaim disk space. |
 
 Background sweep interval: `COMFY_SWEEP_INTERVAL_MINUTES` (default 15).
 
-**Eviction order for byte cap:** oldest-first by `completedAt`. Eviction stops as soon as total bytes drop below `COMFY_ARTIFACT_MAX_BYTES`. Eviction of a record's artifact file is followed by appending a `{ status: "ARTIFACT_EVICTED" }` event to jobs.jsonl.
+**Eviction order for byte cap:** oldest-first by `completedAt`. Eviction stops as soon as total bytes drop below `COMFY_ARTIFACT_MAX_BYTES`. Eviction of a record's artifact file is followed by appending a `{ status: "ARTIFACT_EVICTED" }` event to `jobs.jsonl`, followed by atomic compaction when records are pruned.
 
 ### 4.4 Artifact Streaming to Client
 
@@ -596,32 +631,36 @@ All unit tests inject mock HTTP and WebSocket clients via the constructor — no
 | # | Test description | Pass condition |
 |---|-----------------|----------------|
 | 1 | `submitJob` — prompt > 1 000 chars | throws `ValidationError` |
-| 2 | `submitJob` — width not divisible by 8 | throws `ValidationError` |
-| 3 | `submitJob` — width > 1 024 | throws `ValidationError` |
+| 2 | `submitJob` — image width not divisible by 8 | throws `ValidationError` |
+| 3 | `submitJob` — image width > 1 024 | throws `ValidationError` |
 | 4 | `submitJob` — steps = 31 for image domain | throws `ValidationError` |
 | 5 | `submitJob` — steps = 51 for video domain | throws `ValidationError` |
-| 6 | `submitJob` — durationFrames = 82 | throws `ValidationError` |
-| 7 | `submitJob` — second job same userId (one QUEUED) | throws `UserJobLimitError` |
-| 8 | `submitJob` — second job same userId (one RUNNING) | throws `UserJobLimitError` |
-| 9 | `submitJob` — second job different userId | succeeds (two jobs coexist) |
-| 10 | `submitJob` — returns `{ jobId, status: "QUEUED" }` immediately | status is `QUEUED` before worker dequeues |
-| 11 | `SerialQueue` — QUEUED → RUNNING on dequeue | `startedAt` is set; ComfyUI `/prompt` called |
-| 12 | `SerialQueue` — RUNNING → COMPLETED on WS signal | `executing { node: null }` → `COMPLETED`; `outputFile` populated |
-| 13 | `SerialQueue` — RUNNING → FAILED on `execution_error` | `error` field set; status `FAILED` |
-| 14 | `SerialQueue` — timeout → TIMED_OUT | fake clock exceeds timeout; `/queue` delete called; status `TIMED_OUT` |
-| 15 | `getJobStatus` — unknown jobId | throws `NotFoundError` |
-| 16 | `getJobStatus` — userId mismatch | throws `NotFoundError` |
-| 17 | `cancelJob` — QUEUED job | removed from queue; no ComfyUI call; status `CANCELLED`; returns `true` |
-| 18 | `cancelJob` — RUNNING job | `/queue` delete issued; WS `execution_interrupted` → status `CANCELLED`; returns `true` |
-| 19 | `cancelJob` — COMPLETED job | no-op; returns `false` |
-| 20 | `getJobArtifact` — COMPLETED job | streams bytes; mimeType `image/png`, `video/mp4`, or fallback `image/webp` |
-| 21 | `getJobArtifact` — FAILED job | throws `JobNotCompleteError` |
-| 22 | `getJobArtifact` — past TTL | throws `ArtifactExpiredError` |
-| 23 | Template compile — image tokens substituted | compiled JSON matches snapshot: `CheckpointLoaderSimple` on `flux1-schnell-fp8.safetensors`; node 5 is `KSampler` with `cfg=1.0`, `sampler_name=euler`, `scheduler=simple`; node 7 is `SaveImage` |
-| 24 | Template compile — video tokens substituted | compiled JSON matches snapshot: node 1 `UNETLoader` → node 2 `ModelSamplingSD3 shift=8.0` → node 3 `CLIPLoader type=wan` → nodes 5/6 `CLIPTextEncode` → node 7 `EmptyHunyuanLatentVideo 832×480` → node 8 `KSampler cfg=6.0 uni_pc` → node 9 `VAEDecode` → node 10 `CreateVideo` → node 11 `SaveVideo` (or fallback node 10 `SaveAnimatedWEBP`) |
-| 25 | Template compile — unknown model ID rejected | throws `ValidationError` |
-| 26 | Sweep — deletes artifact file past TTL | file removed; `outputFile` cleared |
-| 27 | Sweep — evicts oldest artifacts when byte cap exceeded | oldest artifact by `completedAt` deleted first; total bytes drop below `COMFY_ARTIFACT_MAX_BYTES` |
+| 6 | `submitJob` — video durationFrames not 4n+1 (e.g. 50 or 82) | throws `ValidationError` |
+| 7 | `submitJob` — video width/height !== 832×480 | throws `ValidationError` |
+| 8 | `submitJob` — fps outside [1, 30] (e.g. 0 or 31) | throws `ValidationError` |
+| 9 | `submitJob` — second job same userId (one QUEUED) | throws `UserJobLimitError` |
+| 10 | `submitJob` — second job same userId (one RUNNING) | throws `UserJobLimitError` |
+| 11 | `submitJob` — second job different userId | succeeds (two jobs coexist) |
+| 12 | `submitJob` — returns `{ jobId, status: "QUEUED" }` immediately | status is `QUEUED` before worker dequeues |
+| 13 | `SerialQueue` — QUEUED → RUNNING on dequeue | `startedAt` is set; ComfyUI `/prompt` called |
+| 14 | `SerialQueue` — RUNNING → COMPLETED on WS signal | `executing { node: null }` → `COMPLETED`; `outputFile` populated |
+| 15 | `SerialQueue` — RUNNING → FAILED on `execution_error` | `error` field set; status `FAILED` |
+| 16 | `SerialQueue` — timeout → TIMED_OUT | fake clock exceeds timeout; `/queue` delete called; status `TIMED_OUT` |
+| 17 | `getJobStatus` — unknown jobId | throws `NotFoundError` |
+| 18 | `getJobStatus` — userId mismatch | throws `NotFoundError` |
+| 19 | `cancelJob` — QUEUED job | removed from queue; no ComfyUI call; status `CANCELLED`; returns `true` |
+| 20 | `cancelJob` — RUNNING job | `/queue` delete issued; WS `execution_interrupted` → status `CANCELLED`; returns `true` |
+| 21 | `cancelJob` — COMPLETED job | no-op; returns `false` |
+| 22 | `getJobArtifact` — COMPLETED job | streams bytes; mimeType derived from extension (`image/png`, `video/mp4`, `image/webp`) |
+| 23 | `getJobArtifact` — FAILED job | throws `JobNotCompleteError` |
+| 24 | `getJobArtifact` — past TTL | throws `ArtifactExpiredError` |
+| 25 | Template compile — image tokens substituted | compiled JSON matches snapshot: `CheckpointLoaderSimple` on `flux1-schnell-fp8.safetensors`; node 5 is `KSampler` with `cfg=1.0`, `sampler_name=euler`, `scheduler=simple`; node 7 is `SaveImage` |
+| 26 | Template compile — video tokens substituted | compiled JSON matches snapshot: node 1 `UNETLoader` → node 2 `ModelSamplingSD3 shift=8.0` → node 3 `CLIPLoader type=wan` → nodes 5/6 `CLIPTextEncode` → node 7 `EmptyHunyuanLatentVideo 832×480` → node 8 `KSampler cfg=6.0 uni_pc` → node 9 `VAEDecode` → node 10 `CreateVideo` → node 11 `SaveVideo` (or fallback node 10 `SaveAnimatedWEBP`) |
+| 27 | Template compile — unknown model ID rejected | throws `ValidationError` |
+| 28 | Sweep — deletes artifact file past TTL | file removed; `outputFile` cleared |
+| 29 | Sweep — evicts oldest artifacts when byte cap exceeded | oldest artifact by `completedAt` deleted first; total bytes drop below `COMFY_ARTIFACT_MAX_BYTES` |
+| 30 | Restart recovery — orphaned RUNNING prompt cancelled | sends `POST /queue { delete: [promptId] }`, transitions to `FAILED`, and rewrites `jobs.jsonl` atomically via `.tmp` rename |
+| 31 | Log compaction — atomic rewrite on startup and prune | `jobs.jsonl.tmp` written and renamed atomically over `jobs.jsonl` with surviving records |
 
 ### 5.2 Integration Test (requires live ComfyUI)
 
