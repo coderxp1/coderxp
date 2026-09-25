@@ -2,10 +2,11 @@
 
 **Status:** Draft for review  
 **Branch:** `feat/media-provider-v1.1`  
+**Author:** Hartmann <jp@coderxp.pro>  
 **Department:** GPU/Media stream  
-**Accountable:** Klaus  
-**Date:** 2026-09-23  
-**Implements:** `IMediaJobService` from `lib/server/providers/types.ts` (merged after PR #4)  
+**Accountable:** Klaus Hoffmann  
+**Date:** 2026-09-24  
+**Implements:** `IMediaJobService` from `lib/server/providers/types.ts` (`IMediaJobService:70-75`, `MediaGenerationRequest:37-47`, `JobRecord:51-62`, `JobStatus:49`, merged in PR #4)  
 **Supersedes:** PR #5 (`feat/media-provider-design`)
 
 ---
@@ -361,6 +362,29 @@ Uses only native ComfyUI v0.36.0 nodes, following the official Wan 2.1 t2v examp
     }
   },
   "10": {
+    "class_type": "CreateVideo",
+    "inputs": {
+      "images": ["9", 0],
+      "fps": "__FPS__"
+    }
+  },
+  "11": {
+    "class_type": "SaveVideo",
+    "inputs": {
+      "video": ["10", 0],
+      "filename_prefix": "cxp_vid",
+      "format": "auto"
+    }
+  }
+}
+```
+
+**Video output node selection (MP4 primary with WebP fallback):**  
+At startup, `GET /object_info` is queried on ComfyUI to discover available node types:
+- **Primary path (MP4):** When `CreateVideo` and `SaveVideo` are registered in the target ComfyUI build (as verified on the Blackwell GPU server running ComfyUI v0.36.0), node 9 (`VAEDecode`) feeds node 10 (`CreateVideo`), which feeds node 11 (`SaveVideo`) producing an MP4 video container (`video/mp4`).
+- **Fallback path (Animated WebP):** If `CreateVideo` or `SaveVideo` is absent in older or minimal ComfyUI builds, node 10 falls back to native `SaveAnimatedWEBP`:
+  ```json
+  "10": {
     "class_type": "SaveAnimatedWEBP",
     "inputs": {
       "images": ["9", 0],
@@ -371,10 +395,8 @@ Uses only native ComfyUI v0.36.0 nodes, following the official Wan 2.1 t2v examp
       "method": "default"
     }
   }
-}
-```
-
-**Video output node — confirmed at integration time:** At startup, `GET /object_info` is called to discover available node types. If `CreateVideo` + `SaveVideo` (mp4) are present in this build, node 10 is replaced with that combination for mp4 output. Otherwise, `SaveAnimatedWEBP` (shown above) is used as the fallback. The integration test (§5.2) confirms which path is live.
+  ```
+  In fallback mode, node 9 connects directly to `SaveAnimatedWEBP` emitting an animated WebP file (`image/webp`). The integration test (§5.2) verifies which path is active.
 
 **Required model files** (ComfyUI standard folders, read-only):
 - `diffusion_models/wan2.1_t2v_1.3B_fp16.safetensors`
@@ -592,11 +614,11 @@ All unit tests inject mock HTTP and WebSocket clients via the constructor — no
 | 17 | `cancelJob` — QUEUED job | removed from queue; no ComfyUI call; status `CANCELLED`; returns `true` |
 | 18 | `cancelJob` — RUNNING job | `/queue` delete issued; WS `execution_interrupted` → status `CANCELLED`; returns `true` |
 | 19 | `cancelJob` — COMPLETED job | no-op; returns `false` |
-| 20 | `getJobArtifact` — COMPLETED job | streams bytes; mimeType `image/png` or `image/webp` |
+| 20 | `getJobArtifact` — COMPLETED job | streams bytes; mimeType `image/png`, `video/mp4`, or fallback `image/webp` |
 | 21 | `getJobArtifact` — FAILED job | throws `JobNotCompleteError` |
 | 22 | `getJobArtifact` — past TTL | throws `ArtifactExpiredError` |
 | 23 | Template compile — image tokens substituted | compiled JSON matches snapshot: `CheckpointLoaderSimple` on `flux1-schnell-fp8.safetensors`; node 5 is `KSampler` with `cfg=1.0`, `sampler_name=euler`, `scheduler=simple`; node 7 is `SaveImage` |
-| 24 | Template compile — video tokens substituted | compiled JSON matches snapshot: node 1 `UNETLoader` → node 2 `ModelSamplingSD3 shift=8.0` → node 3 `CLIPLoader type=wan` → nodes 5/6 `CLIPTextEncode` → node 7 `EmptyHunyuanLatentVideo 832×480` → node 8 `KSampler cfg=6.0 uni_pc` → node 9 `VAEDecode` → node 10 output node |
+| 24 | Template compile — video tokens substituted | compiled JSON matches snapshot: node 1 `UNETLoader` → node 2 `ModelSamplingSD3 shift=8.0` → node 3 `CLIPLoader type=wan` → nodes 5/6 `CLIPTextEncode` → node 7 `EmptyHunyuanLatentVideo 832×480` → node 8 `KSampler cfg=6.0 uni_pc` → node 9 `VAEDecode` → node 10 `CreateVideo` → node 11 `SaveVideo` (or fallback node 10 `SaveAnimatedWEBP`) |
 | 25 | Template compile — unknown model ID rejected | throws `ValidationError` |
 | 26 | Sweep — deletes artifact file past TTL | file removed; `outputFile` cleared |
 | 27 | Sweep — evicts oldest artifacts when byte cap exceeded | oldest artifact by `completedAt` deleted first; total bytes drop below `COMFY_ARTIFACT_MAX_BYTES` |
