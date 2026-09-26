@@ -84,6 +84,8 @@ export interface InternalJobRecord {
   comfyClientId: string;
   subfolder?: string;
   timeoutAt: number;
+  artifactEvicted?: boolean;
+  cancelExecution?: () => void;
 }
 
 interface QueueEntry {
@@ -149,7 +151,11 @@ export class ComfyUiMediaJobService implements IMediaJobService {
     fs.mkdirSync(this.dataDir, { recursive: true });
     fs.mkdirSync(this.artifactsDir, { recursive: true });
 
-    this.comfyUrl = (options.comfyUrl ?? process.env.COMFYUI_URL ?? "http://127.0.0.1:8188").replace(/\/+$/, "");
+    const rawComfyUrl = options.comfyUrl ?? process.env.COMFYUI_URL;
+    if (!rawComfyUrl || rawComfyUrl.trim().length === 0) {
+      throw new Error("COMFYUI_URL is required and cannot be empty");
+    }
+    this.comfyUrl = rawComfyUrl.trim().replace(/\/+$/, "");
     this.fetchFn = options.fetchFn ?? globalThis.fetch;
     this.WebSocketFn = options.WebSocketFn ?? globalThis.WebSocket;
 
@@ -168,17 +174,15 @@ export class ComfyUiMediaJobService implements IMediaJobService {
     const fluxPath = path.join(this.workflowsDir, "flux1-schnell.json");
     const wanPath = path.join(this.workflowsDir, "wan21-t2v.json");
 
-    if (fs.existsSync(fluxPath)) {
-      this.fluxTemplate = JSON.parse(fs.readFileSync(fluxPath, "utf-8"));
-    } else {
-      this.fluxTemplate = {};
+    if (!fs.existsSync(fluxPath)) {
+      throw new Error(`Workflow template not found at ${fluxPath}`);
     }
+    this.fluxTemplate = JSON.parse(fs.readFileSync(fluxPath, "utf-8"));
 
-    if (fs.existsSync(wanPath)) {
-      this.wanTemplate = JSON.parse(fs.readFileSync(wanPath, "utf-8"));
-    } else {
-      this.wanTemplate = {};
+    if (!fs.existsSync(wanPath)) {
+      throw new Error(`Workflow template not found at ${wanPath}`);
     }
+    this.wanTemplate = JSON.parse(fs.readFileSync(wanPath, "utf-8"));
   }
 
   private replayJobStore(): void {
@@ -196,6 +200,11 @@ export class ComfyUiMediaJobService implements IMediaJobService {
         if (!ev.jobId) continue;
         const current = this.jobs.get(ev.jobId) || ({} as InternalJobRecord);
         Object.assign(current, ev);
+        if (ev.artifactEvicted) {
+          current.artifactEvicted = true;
+          current.outputFile = undefined;
+          current.subfolder = undefined;
+        }
         this.jobs.set(ev.jobId, current);
       } catch {
         // Discard partially written trailing line from crash
@@ -229,7 +238,12 @@ export class ComfyUiMediaJobService implements IMediaJobService {
     const tmpPath = `${this.jobsFilePath}.tmp`;
     const lines: string[] = [];
     for (const rec of this.jobs.values()) {
-      lines.push(JSON.stringify(rec));
+      const copy = { ...rec };
+      if (copy.artifactEvicted) {
+        copy.outputFile = undefined;
+        copy.subfolder = undefined;
+      }
+      lines.push(JSON.stringify(copy));
     }
     const data = lines.length > 0 ? lines.join("\n") + "\n" : "";
     const fd = fs.openSync(tmpPath, "w");
@@ -540,6 +554,7 @@ export class ComfyUiMediaJobService implements IMediaJobService {
 
       const cleanup = () => {
         isDone = true;
+        delete record.cancelExecution;
         if (timer) clearTimeout(timer);
         if (pollInterval) clearInterval(pollInterval);
         if (ws) {
@@ -551,9 +566,19 @@ export class ComfyUiMediaJobService implements IMediaJobService {
         }
       };
 
+      record.cancelExecution = () => {
+        cleanup();
+        resolve();
+      };
+
       const remainingMs = Math.max(0, record.timeoutAt - Date.now());
       timer = setTimeout(async () => {
         if (isDone) return;
+        if (record.status === "CANCELLED") {
+          cleanup();
+          resolve();
+          return;
+        }
         cleanup();
         record.status = "TIMED_OUT";
         this.appendEvent({ jobId: record.jobId, status: "TIMED_OUT" });
@@ -575,7 +600,28 @@ export class ComfyUiMediaJobService implements IMediaJobService {
           if (!res.ok) return false;
           const hist = await res.json();
           const promptHist = hist[promptId];
-          if (promptHist && promptHist.outputs) {
+          if (promptHist) {
+            if (promptHist.status && promptHist.status.status_str === "error") {
+              const messages = promptHist.status.messages || [];
+              const isInterrupted = messages.some((m: any) => Array.isArray(m) && m[0] === "execution_interrupted") || record.status === "CANCELLED";
+              if (isInterrupted) {
+                cleanup();
+                record.status = "CANCELLED";
+                this.appendEvent({ jobId: record.jobId, status: "CANCELLED" });
+                resolve();
+                return true;
+              } else {
+                cleanup();
+                const errMsg = messages[0]?.[1]?.exception_message || "ComfyUI execution error";
+                record.status = "FAILED";
+                record.error = errMsg;
+                this.appendEvent({ jobId: record.jobId, status: "FAILED", error: errMsg });
+                reject(new Error(errMsg));
+                return true;
+              }
+            }
+
+            if (promptHist.outputs) {
             const outputs = promptHist.outputs;
             let foundFilename: string | undefined;
             let foundSubfolder: string | undefined;
@@ -600,6 +646,7 @@ export class ComfyUiMediaJobService implements IMediaJobService {
             }
 
             if (foundFilename) {
+              if (record.status === "CANCELLED") return true;
               cleanup();
               record.status = "COMPLETED";
               record.completedAt = Date.now();
@@ -616,7 +663,8 @@ export class ComfyUiMediaJobService implements IMediaJobService {
               return true;
             }
           }
-        } catch {
+        }
+      } catch {
           // continue polling
         }
         return false;
@@ -627,6 +675,7 @@ export class ComfyUiMediaJobService implements IMediaJobService {
 
         ws.onmessage = async (event: MessageEvent) => {
           if (isDone) return;
+          if (record.status === "CANCELLED") return;
           try {
             if (typeof event.data !== "string") return; // ignore preview binaries
             const msg = JSON.parse(event.data);
@@ -719,7 +768,19 @@ export class ComfyUiMediaJobService implements IMediaJobService {
       record.status = "CANCELLED";
       this.appendEvent({ jobId, status: "CANCELLED" });
 
+      if (record.cancelExecution) {
+        record.cancelExecution();
+      }
+
       if (record.comfyPromptId) {
+        try {
+          await this.fetchFn(`${this.comfyUrl}/interrupt`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch {
+          // best-effort
+        }
         try {
           await this.fetchFn(`${this.comfyUrl}/queue`, {
             method: "POST",
@@ -746,7 +807,7 @@ export class ComfyUiMediaJobService implements IMediaJobService {
       throw new JobNotCompleteError(`Job '${jobId}' has status '${record.status}', expected 'COMPLETED'`);
     }
 
-    if (!record.outputFile) {
+    if (record.artifactEvicted || !record.outputFile) {
       throw new ArtifactExpiredError(`Artifact for job '${jobId}' is no longer available`);
     }
 
@@ -816,7 +877,8 @@ export class ComfyUiMediaJobService implements IMediaJobService {
             }
           }
           record.outputFile = undefined;
-          this.appendEvent({ jobId: record.jobId, outputFile: undefined });
+          record.artifactEvicted = true;
+          this.appendEvent({ jobId: record.jobId, outputFile: undefined, artifactEvicted: true });
         }
       }
     }
@@ -856,7 +918,8 @@ export class ComfyUiMediaJobService implements IMediaJobService {
           const rec = this.jobs.get(item.jobId);
           if (rec) {
             rec.outputFile = undefined;
-            this.appendEvent({ jobId: rec.jobId, outputFile: undefined });
+            rec.artifactEvicted = true;
+            this.appendEvent({ jobId: rec.jobId, outputFile: undefined, artifactEvicted: true });
           }
         } catch {
           // ignore unlink error

@@ -1,5 +1,5 @@
 /**
- * Unit tests for ComfyUiMediaJobService (31 test cases from Design Doc v1.1 Section 5.1).
+ * Unit tests for ComfyUiMediaJobService (33 test cases from Design Doc v1.1 Section 5.1).
  * Mock HTTP fetch and WebSocket — no external network, no GPU required.
  */
 import assert from "node:assert/strict";
@@ -15,6 +15,8 @@ import {
   ArtifactExpiredError,
   InternalJobRecord,
 } from "../lib/server/providers";
+
+process.env.COMFYUI_URL = process.env.COMFYUI_URL || "http://127.0.0.1:8188";
 
 // ---------------------------------------------------------------------------
 // Mock Helpers
@@ -143,7 +145,7 @@ async function sleep(ms: number): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function runTests() {
-  console.log("=== RUNNING COMFYUI MEDIA PROVIDER UNIT TESTS (31 TESTS) ===");
+  console.log("=== RUNNING COMFYUI MEDIA PROVIDER UNIT TESTS (33 TESTS) ===");
   let passed = 0;
 
   const validImageReq = {
@@ -955,7 +957,78 @@ async function runTests() {
     console.log("[PASS] Test 31");
   }
 
-  console.log(`\n=== ALL ${passed}/31 UNIT TESTS PASSED SUCCESSFULLY ===`);
+  // 32. COMFYUI_URL required — throws Error if neither options nor env var provided
+  {
+    console.log("Test 32: COMFYUI_URL required — throws Error if neither options nor env var provided");
+    const testDir = createTestDataDir("t32");
+    const originalEnv = process.env.COMFYUI_URL;
+    delete process.env.COMFYUI_URL;
+    try {
+      assert.throws(
+        () => new ComfyUiMediaJobService({ dataDir: testDir }),
+        /COMFYUI_URL is required and cannot be empty/,
+      );
+    } finally {
+      process.env.COMFYUI_URL = originalEnv;
+      cleanupDir(testDir);
+    }
+    passed++;
+    console.log("[PASS] Test 32");
+  }
+
+  // 33. Artifact expiry persistence across service restarts
+  {
+    console.log("Test 33: Artifact expiry persistence — re-instantiation after retention sweep throws ArtifactExpiredError");
+    const testDir = createTestDataDir("t33");
+    const artifactsDir = path.join(testDir, "artifacts");
+    fs.mkdirSync(artifactsDir, { recursive: true });
+
+    const service1 = new ComfyUiMediaJobService({
+      dataDir: testDir,
+      artifactTtlHours: 0.00001,
+    });
+    (service1 as any).artifactTtlMs = 100;
+
+    const { jobId } = await service1.submitJob("u-evict", validImageReq);
+    const rec = (service1 as any).jobs.get(jobId);
+    rec.status = "COMPLETED";
+    rec.completedAt = Date.now() - 500;
+    rec.outputFile = "test_output.png";
+    (service1 as any).appendEvent({
+      jobId,
+      status: "COMPLETED",
+      completedAt: rec.completedAt,
+      outputFile: rec.outputFile,
+    });
+
+    const fakeArtifactFile = path.join(artifactsDir, `${jobId}.png`);
+    fs.writeFileSync(fakeArtifactFile, "fake-bytes");
+    assert.ok(fs.existsSync(fakeArtifactFile));
+
+    await service1.runRetentionSweep();
+    assert.equal(fs.existsSync(fakeArtifactFile), false, "Artifact file must be deleted");
+    assert.equal(rec.artifactEvicted, true, "Record must have artifactEvicted: true");
+
+    // Re-instantiate service against the same dataDir
+    const service2 = new ComfyUiMediaJobService({
+      dataDir: testDir,
+    });
+
+    await assert.rejects(
+      () => service2.getJobArtifact("u-evict", jobId),
+      (err: any) => {
+        assert.ok(err instanceof ArtifactExpiredError, "Must throw ArtifactExpiredError");
+        assert.match(err.message, /no longer available/);
+        return true;
+      },
+    );
+
+    cleanupDir(testDir);
+    passed++;
+    console.log("[PASS] Test 33");
+  }
+
+  console.log(`\n=== ALL ${passed}/33 UNIT TESTS PASSED SUCCESSFULLY ===`);
 }
 
 runTests().catch((err) => {

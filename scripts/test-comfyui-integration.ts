@@ -140,6 +140,53 @@ async function main() {
     }
     assert.equal(cancelRecord.status, "CANCELLED", "Cancelled job must reach CANCELLED status");
     console.log(`Job ${cancelSubmit.jobId} successfully reached CANCELLED status (execution_interrupted event handled).`);
+
+    // Assert real cancel effect on ComfyUI:
+    // Poll GET /history/{promptId} for status_str === "error" (execution_interrupted)
+    // OR poll GET /queue until promptId is not in queue_running and not in queue_pending.
+    let comfyCancelled = false;
+    let observedCondition = "";
+    if (promptIdToCancel) {
+      const startComfyWait = Date.now();
+      while (Date.now() - startComfyWait < 15_000) {
+        try {
+          const histRes = await fetch(`${comfyUrl}/history/${promptIdToCancel}`);
+          if (histRes.ok) {
+            const histData = (await histRes.json()) as Record<string, any>;
+            const promptHist = histData[promptIdToCancel];
+            if (promptHist?.status?.status_str === "error") {
+              comfyCancelled = true;
+              observedCondition = `GET /history recorded status_str: 'error' (messages: ${JSON.stringify(promptHist.status.messages)})`;
+              break;
+            }
+          }
+        } catch {
+          // ignore
+        }
+
+        try {
+          const queueRes = await fetch(`${comfyUrl}/queue`);
+          if (queueRes.ok) {
+            const queueData = (await queueRes.json()) as any;
+            const runningList = queueData.queue_running || [];
+            const pendingList = queueData.queue_pending || [];
+            const inRunning = runningList.some((item: any) => item[1] === promptIdToCancel);
+            const inPending = pendingList.some((item: any) => item[1] === promptIdToCancel);
+            if (!inRunning && !inPending) {
+              comfyCancelled = true;
+              observedCondition = "GET /queue confirmed prompt is not in queue_running and not in queue_pending";
+              break;
+            }
+          }
+        } catch {
+          // ignore
+        }
+        await sleep(300);
+      }
+      assert.ok(comfyCancelled, "ComfyUI must acknowledge cancellation via /history error or /queue removal");
+      console.log(`[VERIFIED] ComfyUI cancellation confirmed: ${observedCondition}`);
+    }
+
     console.log("[PASS] Scenario 3: Cancel running job");
 
     // -------------------------------------------------------------

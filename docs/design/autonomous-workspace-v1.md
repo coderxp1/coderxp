@@ -227,7 +227,7 @@ Digests are resolved and pinned during the CI image build pipeline and audited w
 
 Media generation capabilities are decoupled from devbox compute and provided by a dedicated GPU cluster via the `IMediaJobService` contract:
 
-* **Host Machine:** Dedicated GPU Server (`45.84.65.76`).
+* **Host Machine:** the GPU host.
 * **Hardware Configuration:** 2x NVIDIA RTX PRO 6000 Blackwell Server Edition (96 GB VRAM each).
   - **GPU 0 (`cuda:0`):** Exclusively dedicated to ComfyUI media generation workflows.
   - **GPU 1 (`cuda:1`):** Reserved for future development workspaces and agent workloads.
